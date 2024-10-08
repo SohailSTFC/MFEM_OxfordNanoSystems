@@ -30,6 +30,7 @@ class DarcyEMProblem
     ParBilinearForm *Jacobian;
     ParLinearForm   *AVForm;
 
+
   public:
 	//The 
     DarcyEMProblem(ParFiniteElementSpace *f1, ParFiniteElementSpace *f2, real_t sig);

@@ -10,6 +10,9 @@
 # CONTRIBUTING.md for details.
 
 # Use the MFEM install directory
+#
+# export MFEM_INSTALL_DIR=/your/MFEMInstall
+#
 MFEM_INSTALL_DIR=/home/sohail/MFEM_STUFF/mfem/build
 CONFIG_MK = $(MFEM_INSTALL_DIR)/share/mfem/config.mk
 

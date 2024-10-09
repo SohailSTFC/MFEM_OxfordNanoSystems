@@ -4,18 +4,11 @@
 //
 // Sample runs:  mpirun -np 4 ex5p -m ../data/square-disc.mesh
 //               mpirun -np 4 ex5p -m ../data/star.mesh
-//               mpirun -np 4 ex5p -m ../data/star.mesh -r 2 -pa
 //               mpirun -np 4 ex5p -m ../data/beam-tet.mesh
 //               mpirun -np 4 ex5p -m ../data/beam-hex.mesh
-//               mpirun -np 4 ex5p -m ../data/beam-hex.mesh -pa
 //               mpirun -np 4 ex5p -m ../data/escher.mesh
 //               mpirun -np 4 ex5p -m ../data/fichera.mesh
 //
-// Device sample runs:
-//               mpirun -np 4 ex5p -m ../data/star.mesh -r 2 -pa -d cuda
-//               mpirun -np 4 ex5p -m ../data/star.mesh -r 2 -pa -d raja-cuda
-//               mpirun -np 4 ex5p -m ../data/star.mesh -r 2 -pa -d raja-omp
-//               mpirun -np 4 ex5p -m ../data/beam-hex.mesh -pa -d cuda
 //
 // Description:  This example code solves a simple 2D/3D mixed Darcy problem
 //               corresponding to the saddle point system
@@ -35,7 +28,6 @@
 //               Optional saving with ADIOS2 (adios2.readthedocs.io) streams is
 //               also illustrated.
 //
-//               We recommend viewing examples 1-4 before viewing this example.
 
 #include "mfem.hpp"
 #include <fstream>
@@ -65,7 +57,6 @@ int main(int argc, char *argv[])
    int ref_levels = -1;
    int order = 1;
    bool par_format = false;
-   bool pa = false;
    const char *device_config = "cpu";
    bool visualization = 1;
    bool adios2 = false;
@@ -80,10 +71,6 @@ int main(int argc, char *argv[])
    args.AddOption(&par_format, "-pf", "--parallel-format", "-sf",
                   "--serial-format",
                   "Format to use when saving the results for VisIt.");
-   args.AddOption(&pa, "-pa", "--partial-assembly", "-no-pa",
-                  "--no-partial-assembly", "Enable Partial Assembly.");
-   args.AddOption(&device_config, "-d", "--device",
-                  "Device configuration string, see Device::Configure().");
    args.AddOption(&visualization, "-vis", "--visualization", "-no-vis",
                   "--no-visualization",
                   "Enable or disable GLVis visualization.");
@@ -153,7 +140,7 @@ int main(int argc, char *argv[])
    ParFiniteElementSpace *W_space = new ParFiniteElementSpace(pmesh, l2_coll);
 
    real_t sig = 1.0;
-   DarcyEMProblem demProb(R_space, W_space, sig);
+   DarcyEMProblem demoProb(R_space, W_space, sig);
 
    HYPRE_BigInt dimR = R_space->GlobalTrueVSize();
    HYPRE_BigInt dimW = W_space->GlobalTrueVSize();
@@ -231,15 +218,10 @@ int main(int argc, char *argv[])
    HypreParMatrix *M = NULL;
    HypreParMatrix *B = NULL;
 
-   if (pa) { mVarf->SetAssemblyLevel(AssemblyLevel::PARTIAL); }
    mVarf->AddDomainIntegrator(new VectorFEMassIntegrator(k));
    mVarf->Assemble();
-   if (!pa) { mVarf->Finalize(); }
-
-   if (pa) { bVarf->SetAssemblyLevel(AssemblyLevel::PARTIAL); }
    bVarf->AddDomainIntegrator(new VectorFEDivergenceIntegrator);
    bVarf->Assemble();
-   if (!pa) { bVarf->Finalize(); }
 
    BlockOperator *darcyOp = new BlockOperator(block_trueOffsets);
 
@@ -248,27 +230,15 @@ int main(int argc, char *argv[])
 
    TransposeOperator *Bt = NULL;
 
-   if (pa)
-   {
-      mVarf->FormSystemMatrix(empty_tdof_list, opM);
-      bVarf->FormRectangularSystemMatrix(empty_tdof_list, empty_tdof_list, opB);
-      Bt = new TransposeOperator(opB.Ptr());
+   M = mVarf->ParallelAssemble();
+   B = bVarf->ParallelAssemble();
+   (*B) *= -1;
+   Bt = new TransposeOperator(B);
 
-      darcyOp->SetBlock(0,0, opM.Ptr());
-      darcyOp->SetBlock(0,1, Bt, -1.0);
-      darcyOp->SetBlock(1,0, opB.Ptr(), -1.0);
-   }
-   else
-   {
-      M = mVarf->ParallelAssemble();
-      B = bVarf->ParallelAssemble();
-      (*B) *= -1;
-      Bt = new TransposeOperator(B);
+   darcyOp->SetBlock(0,0, M);
+   darcyOp->SetBlock(0,1, Bt);
+   darcyOp->SetBlock(1,0, B);
 
-      darcyOp->SetBlock(0,0, M);
-      darcyOp->SetBlock(0,1, Bt);
-      darcyOp->SetBlock(1,0, B);
-   }
 
    // 12. Construct the operators for preconditioner
    //
@@ -283,50 +253,27 @@ int main(int argc, char *argv[])
    Vector Md_PA;
    Solver *invM, *invS;
 
-   if (pa)
-   {
-      Md_PA.SetSize(R_space->GetTrueVSize());
-      mVarf->AssembleDiagonal(Md_PA);
-      auto Md_host = Md_PA.HostRead();
-      Vector invMd(Md_PA.Size());
-      for (int i=0; i<Md_PA.Size(); ++i)
-      {
-         invMd(i) = 1.0 / Md_host[i];
-      }
+   Md = new HypreParVector(MPI_COMM_WORLD, M->GetGlobalNumRows(),
+                           M->GetRowStarts());
+   M->GetDiag(*Md);
 
-      Vector BMBt_diag(W_space->GetTrueVSize());
-      bVarf->AssembleDiagonal_ADAt(invMd, BMBt_diag);
+   MinvBt = B->Transpose();
+   MinvBt->InvScaleRows(*Md);
+   S = ParMult(B, MinvBt);
 
-      Array<int> ess_tdof_list;  // empty
-
-      invM = new OperatorJacobiSmoother(Md_PA, ess_tdof_list);
-      invS = new OperatorJacobiSmoother(BMBt_diag, ess_tdof_list);
-   }
-   else
-   {
-      Md = new HypreParVector(MPI_COMM_WORLD, M->GetGlobalNumRows(),
-                              M->GetRowStarts());
-      M->GetDiag(*Md);
-
-      MinvBt = B->Transpose();
-      MinvBt->InvScaleRows(*Md);
-      S = ParMult(B, MinvBt);
-
-      invM = new HypreDiagScale(*M);
-      invS = new HypreBoomerAMG(*S);
-   }
+   invM = new HypreDiagScale(*M);
+   invS = new HypreBoomerAMG(*S);
 
    invM->iterative_mode = false;
    invS->iterative_mode = false;
 
-   BlockDiagonalPreconditioner *darcyPr = new BlockDiagonalPreconditioner(
-      block_trueOffsets);
+   BlockDiagonalPreconditioner *darcyPr = new BlockDiagonalPreconditioner(block_trueOffsets);
    darcyPr->SetDiagonalBlock(0, invM);
    darcyPr->SetDiagonalBlock(1, invS);
 
    // 13. Solve the linear system with MINRES.
    //     Check the norm of the unpreconditioned residual.
-   int maxIter(pa ? 1000 : 500);
+   int maxIter(500);
    real_t rtol(1.e-6);
    real_t atol(1.e-10);
 

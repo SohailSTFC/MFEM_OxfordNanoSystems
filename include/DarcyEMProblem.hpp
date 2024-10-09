@@ -33,10 +33,10 @@ class DarcyEMProblem
     ParLinearForm   VForm;
 
     //Form operators
-   BlockOperator *darcyOp = new BlockOperator(block_trueOffsets);
-   Array<int> empty_tdof_list;  // empty
-   OperatorPtr opM, opB;
-   TransposeOperator *Bt = NULL;
+ //  BlockOperator *darcyOp = new BlockOperator(block_trueOffsets);
+ //  Array<int> empty_tdof_list;  // empty
+  // OperatorPtr opM, opB;
+  // TransposeOperator *Bt = NULL;
 
 
   public:

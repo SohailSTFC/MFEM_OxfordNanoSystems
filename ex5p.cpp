@@ -139,8 +139,6 @@ int main(int argc, char *argv[])
    ParFiniteElementSpace *R_space = new ParFiniteElementSpace(pmesh, hdiv_coll);
    ParFiniteElementSpace *W_space = new ParFiniteElementSpace(pmesh, l2_coll);
 
-   real_t sig = 1.0;
-   DarcyEMProblem demoProb(R_space, W_space, sig);
 
    HYPRE_BigInt dimR = R_space->GlobalTrueVSize();
    HYPRE_BigInt dimW = W_space->GlobalTrueVSize();
@@ -171,6 +169,7 @@ int main(int argc, char *argv[])
    block_trueOffsets[2] = W_space->TrueVSize();
    block_trueOffsets.PartialSum();
 
+
    // 9. Define the coefficients, analytical solution, and rhs of the PDE.
    ConstantCoefficient k(1.0);
 
@@ -186,6 +185,10 @@ int main(int argc, char *argv[])
    MemoryType mt = device.GetMemoryType();
    BlockVector x(block_offsets, mt), rhs(block_offsets, mt);
    BlockVector trueX(block_trueOffsets, mt), trueRhs(block_trueOffsets, mt);
+
+
+   real_t sig = 1.0;
+//   DarcyEMProblem demoProb(R_space, W_space, sig, mt, dim);
 
    ParLinearForm *fform(new ParLinearForm);
    fform->Update(R_space, rhs.GetBlock(0), 0);
@@ -371,26 +374,6 @@ int main(int argc, char *argv[])
    paraview_dc.RegisterField("velocity",u);
    paraview_dc.RegisterField("pressure",p);
    paraview_dc.Save();
-
-   // 18. Optionally output a BP (binary pack) file using ADIOS2. This can be
-   //     visualized with the ParaView VTX reader.
-#ifdef MFEM_USE_ADIOS2
-   if (adios2)
-   {
-      std::string postfix(mesh_file);
-      postfix.erase(0, std::string("../data/").size() );
-      postfix += "_o" + std::to_string(order);
-      const std::string collection_name = "ex5-p_" + postfix + ".bp";
-
-      ADIOS2DataCollection adios2_dc(MPI_COMM_WORLD, collection_name, pmesh);
-      adios2_dc.SetLevelsOfDetail(1);
-      adios2_dc.SetCycle(1);
-      adios2_dc.SetTime(0.0);
-      adios2_dc.RegisterField("velocity",u);
-      adios2_dc.RegisterField("pressure",p);
-      adios2_dc.Save();
-   }
-#endif
 
    // 19. Send the solution by socket to a GLVis server.
    if (visualization)

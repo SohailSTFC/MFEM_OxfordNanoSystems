@@ -1,3 +1,13 @@
+//
+//
+// These are stripped out optional extras in the
+// original ex5p problem to reduce the effort
+// of refactoring it
+//
+//
+//
+
+
    // 18. Optionally output a BP (binary pack) file using ADIOS2. This can be
    //     visualized with the ParaView VTX reader.
 #ifdef MFEM_USE_ADIOS2

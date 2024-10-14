@@ -43,8 +43,6 @@ using namespace mfem;
 
 int main(int argc, char *argv[])
 {
-   StopWatch chrono;
-
    // 1. Initialize MPI and HYPRE.
    Mpi::Init(argc, argv);
    int num_procs = Mpi::WorldSize();
@@ -150,14 +148,11 @@ int main(int argc, char *argv[])
    DarcyEMProblem demoProb(R_space, W_space, sig, mt, dim);
 
 
-
    //Set up the linear/nonlinear solver
    int maxIter(500);
    real_t rtol(1.e-6);
    real_t atol(1.e-10);
 
-   chrono.Clear();
-   chrono.Start();
    MINRESSolver solver(MPI_COMM_WORLD);
    solver.SetAbsTol(atol);
    solver.SetRelTol(rtol);
@@ -167,16 +162,15 @@ int main(int argc, char *argv[])
    demoProb.Set_Solver(&solver);
 
    //Solve the equations
-   demoProb.Solve();
-   chrono.Stop();
+   demoProb.Solve(verbose);
 
 
    // 20. Free the used memory.
    demoProb.~DarcyEMProblem();
- //  delete W_space;
-  // delete R_space;
- //  delete l2_coll;
-  // delete hdiv_coll;
-  // delete pmesh;
+   delete W_space;
+   delete R_space;
+   delete l2_coll;
+   delete hdiv_coll;
+   delete pmesh;
    return 0;
 }

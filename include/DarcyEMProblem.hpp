@@ -74,7 +74,7 @@ class DarcyEMProblem
     void Set_Solver(IterativeSolver  *solver);
 
     //Solve the equation
-    void Solve();
+    void Solve(bool verbose);
 
 	//The destructor
     ~DarcyEMProblem();
@@ -221,20 +221,44 @@ void DarcyEMProblem::Set_Solver(IterativeSolver *solver){
   if(darcyEMPr != NULL) SolverPointer->SetPreconditioner(*darcyEMPr);
 };
 
-void DarcyEMProblem::Solve(){
+void DarcyEMProblem::Solve(bool verbose){
+   StopWatch chrono;
+   chrono.Clear();
+   chrono.Start();
    tx_vec = 0.0;
    SolverPointer->Mult(tb_vec, tx_vec);
+   chrono.Stop();
+
+   if (verbose)
+   {
+      if (SolverPointer->GetConverged())
+         std::cout << "MINRES converged in " << SolverPointer->GetNumIterations()
+                   << " iterations with a residual norm of " << SolverPointer->GetFinalNorm() << ".\n";
+      else
+         std::cout << "MINRES did not converge in " << SolverPointer->GetNumIterations()
+                   << " iterations. Residual norm is " << SolverPointer->GetFinalNorm() << ".\n";
+      std::cout << "MINRES solver took " << chrono.RealTime() << "s. \n";
+   }
 };
 
 
 DarcyEMProblem::~DarcyEMProblem(){
-   delete JForm;
-   delete VForm;
-   delete darcyEMOp;
-   delete JJForm;
-   delete JVForm;
-   delete M;
-   delete B;
-   delete Bt;
+   SolverPointer.reset();
+   if(JForm     != NULL) delete JForm;
+   if(VForm     != NULL) delete VForm;
+   if(darcyEMOp != NULL) delete darcyEMOp;
+   if(darcyEMPr != NULL) delete darcyEMPr;
+   if(JJForm    != NULL) delete JJForm;
+   if(JVForm    != NULL) delete JVForm;
+   if(M         != NULL) delete M;
+   if(B         != NULL) delete B;
+   if(Bt        != NULL) delete Bt;
+   if(MinvBt    != NULL) delete MinvBt;
+   if(Md        != NULL) delete Md;
+   if(S         != NULL) delete S;
+   if(invM      != NULL) delete invM;
+   if(invS      != NULL) delete invS;
+   if(fespaceRT != NULL) delete fespaceRT;
+   if(fespaceL  != NULL) delete fespaceL;
 };
 #endif

@@ -4,23 +4,16 @@
 //
 // Sample runs:  mpirun -np 4 ex5p -m ../data/square-disc.mesh
 //               mpirun -np 4 ex5p -m ../data/star.mesh
-//               mpirun -np 4 ex5p -m ../data/star.mesh -r 2 -pa
 //               mpirun -np 4 ex5p -m ../data/beam-tet.mesh
 //               mpirun -np 4 ex5p -m ../data/beam-hex.mesh
-//               mpirun -np 4 ex5p -m ../data/beam-hex.mesh -pa
 //               mpirun -np 4 ex5p -m ../data/escher.mesh
 //               mpirun -np 4 ex5p -m ../data/fichera.mesh
 //
-// Device sample runs:
-//               mpirun -np 4 ex5p -m ../data/star.mesh -r 2 -pa -d cuda
-//               mpirun -np 4 ex5p -m ../data/star.mesh -r 2 -pa -d raja-cuda
-//               mpirun -np 4 ex5p -m ../data/star.mesh -r 2 -pa -d raja-omp
-//               mpirun -np 4 ex5p -m ../data/beam-hex.mesh -pa -d cuda
 //
 // Description:  This example code solves a simple 2D/3D mixed Darcy problem
 //               corresponding to the saddle point system
 //
-//                                 k*u + grad p = f
+//                                 u + grad p = f
 //                                 - div u      = g
 //
 //               with natural boundary condition -p = <given pressure>.
@@ -35,21 +28,18 @@
 //               Optional saving with ADIOS2 (adios2.readthedocs.io) streams is
 //               also illustrated.
 //
-//               We recommend viewing examples 1-4 before viewing this example.
 
 #include "mfem.hpp"
 #include <fstream>
 #include <iostream>
 
+// Define the analytical solution and forcing terms / boundary conditions
+#include "include/AnalyticSolution.hpp"
+#include "include/DarcyEMProblem.hpp"
+
 using namespace std;
 using namespace mfem;
 
-// Define the analytical solution and forcing terms / boundary conditions
-void uFun_ex(const Vector & x, Vector & u);
-real_t pFun_ex(const Vector & x);
-void fFun(const Vector & x, Vector & f);
-real_t gFun(const Vector & x);
-real_t f_natural(const Vector & x);
 
 int main(int argc, char *argv[])
 {
@@ -154,6 +144,7 @@ int main(int argc, char *argv[])
    ParFiniteElementSpace *R_space = new ParFiniteElementSpace(pmesh, hdiv_coll);
    ParFiniteElementSpace *W_space = new ParFiniteElementSpace(pmesh, l2_coll);
 
+
    HYPRE_BigInt dimR = R_space->GlobalTrueVSize();
    HYPRE_BigInt dimW = W_space->GlobalTrueVSize();
 
@@ -183,6 +174,7 @@ int main(int argc, char *argv[])
    block_trueOffsets[2] = W_space->TrueVSize();
    block_trueOffsets.PartialSum();
 
+
    // 9. Define the coefficients, analytical solution, and rhs of the PDE.
    ConstantCoefficient k(1.0);
 
@@ -198,6 +190,7 @@ int main(int argc, char *argv[])
    MemoryType mt = device.GetMemoryType();
    BlockVector x(block_offsets, mt), rhs(block_offsets, mt);
    BlockVector trueX(block_trueOffsets, mt), trueRhs(block_trueOffsets, mt);
+
 
    ParLinearForm *fform(new ParLinearForm);
    fform->Update(R_space, rhs.GetBlock(0), 0);
@@ -269,6 +262,12 @@ int main(int argc, char *argv[])
       darcyOp->SetBlock(1,0, B);
    }
 
+
+
+   real_t sig = 1.0;
+   DarcyEMProblem demoProb(R_space, W_space, sig, mt, dim);
+
+
    // 12. Construct the operators for preconditioner
    //
    //                 P = [ diag(M)         0         ]
@@ -282,50 +281,27 @@ int main(int argc, char *argv[])
    Vector Md_PA;
    Solver *invM, *invS;
 
-   if (pa)
-   {
-      Md_PA.SetSize(R_space->GetTrueVSize());
-      mVarf->AssembleDiagonal(Md_PA);
-      auto Md_host = Md_PA.HostRead();
-      Vector invMd(Md_PA.Size());
-      for (int i=0; i<Md_PA.Size(); ++i)
-      {
-         invMd(i) = 1.0 / Md_host[i];
-      }
+   Md = new HypreParVector(MPI_COMM_WORLD, M->GetGlobalNumRows(),
+                           M->GetRowStarts());
+   M->GetDiag(*Md);
 
-      Vector BMBt_diag(W_space->GetTrueVSize());
-      bVarf->AssembleDiagonal_ADAt(invMd, BMBt_diag);
+   MinvBt = B->Transpose();
+   MinvBt->InvScaleRows(*Md);
+   S = ParMult(B, MinvBt);
 
-      Array<int> ess_tdof_list;  // empty
-
-      invM = new OperatorJacobiSmoother(Md_PA, ess_tdof_list);
-      invS = new OperatorJacobiSmoother(BMBt_diag, ess_tdof_list);
-   }
-   else
-   {
-      Md = new HypreParVector(MPI_COMM_WORLD, M->GetGlobalNumRows(),
-                              M->GetRowStarts());
-      M->GetDiag(*Md);
-
-      MinvBt = B->Transpose();
-      MinvBt->InvScaleRows(*Md);
-      S = ParMult(B, MinvBt);
-
-      invM = new HypreDiagScale(*M);
-      invS = new HypreBoomerAMG(*S);
-   }
+   invM = new HypreDiagScale(*M);
+   invS = new HypreBoomerAMG(*S);
 
    invM->iterative_mode = false;
    invS->iterative_mode = false;
 
-   BlockDiagonalPreconditioner *darcyPr = new BlockDiagonalPreconditioner(
-      block_trueOffsets);
+   BlockDiagonalPreconditioner *darcyPr = new BlockDiagonalPreconditioner(block_trueOffsets);
    darcyPr->SetDiagonalBlock(0, invM);
    darcyPr->SetDiagonalBlock(1, invS);
 
    // 13. Solve the linear system with MINRES.
    //     Check the norm of the unpreconditioned residual.
-   int maxIter(pa ? 1000 : 500);
+   int maxIter(500);
    real_t rtol(1.e-6);
    real_t atol(1.e-10);
 
@@ -424,26 +400,6 @@ int main(int argc, char *argv[])
    paraview_dc.RegisterField("pressure",p);
    paraview_dc.Save();
 
-   // 18. Optionally output a BP (binary pack) file using ADIOS2. This can be
-   //     visualized with the ParaView VTX reader.
-#ifdef MFEM_USE_ADIOS2
-   if (adios2)
-   {
-      std::string postfix(mesh_file);
-      postfix.erase(0, std::string("../data/").size() );
-      postfix += "_o" + std::to_string(order);
-      const std::string collection_name = "ex5-p_" + postfix + ".bp";
-
-      ADIOS2DataCollection adios2_dc(MPI_COMM_WORLD, collection_name, pmesh);
-      adios2_dc.SetLevelsOfDetail(1);
-      adios2_dc.SetCycle(1);
-      adios2_dc.SetTime(0.0);
-      adios2_dc.RegisterField("velocity",u);
-      adios2_dc.RegisterField("pressure",p);
-      adios2_dc.Save();
-   }
-#endif
-
    // 19. Send the solution by socket to a GLVis server.
    if (visualization)
    {
@@ -488,61 +444,4 @@ int main(int argc, char *argv[])
    delete pmesh;
 
    return 0;
-}
-
-
-void uFun_ex(const Vector & x, Vector & u)
-{
-   real_t xi(x(0));
-   real_t yi(x(1));
-   real_t zi(0.0);
-   if (x.Size() == 3)
-   {
-      zi = x(2);
-   }
-
-   u(0) = - exp(xi)*sin(yi)*cos(zi);
-   u(1) = - exp(xi)*cos(yi)*cos(zi);
-
-   if (x.Size() == 3)
-   {
-      u(2) = exp(xi)*sin(yi)*sin(zi);
-   }
-}
-
-// Change if needed
-real_t pFun_ex(const Vector & x)
-{
-   real_t xi(x(0));
-   real_t yi(x(1));
-   real_t zi(0.0);
-
-   if (x.Size() == 3)
-   {
-      zi = x(2);
-   }
-
-   return exp(xi)*sin(yi)*cos(zi);
-}
-
-void fFun(const Vector & x, Vector & f)
-{
-   f = 0.0;
-}
-
-real_t gFun(const Vector & x)
-{
-   if (x.Size() == 3)
-   {
-      return -pFun_ex(x);
-   }
-   else
-   {
-      return 0;
-   }
-}
-
-real_t f_natural(const Vector & x)
-{
-   return (-pFun_ex(x));
 }

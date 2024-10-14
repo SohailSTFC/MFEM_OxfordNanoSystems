@@ -53,6 +53,9 @@ class DarcyEMProblem
     HypreParMatrix *B = NULL;
 
 
+    //Shared pointer to the solver
+    shared_ptr<mfem::Solver> SolverPointer;
+
  //  BlockOperator *darcyOp = new BlockOperator(block_trueOffsets);
  //  Array<int> empty_tdof_list;  // empty
   // OperatorPtr opM, opB;
@@ -63,6 +66,12 @@ class DarcyEMProblem
 	//The constructor
     DarcyEMProblem(ParFiniteElementSpace *f1, ParFiniteElementSpace *f2
 	             , real_t sig, MemoryType deviceMT, int dim);
+
+    //Set a linear/non-linear solver
+    void Set_Solver(Solver *solver);
+
+    //Solve the equation
+    void Solve();
 
 	//The destructor
     ~DarcyEMProblem();
@@ -111,12 +120,11 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
 
 
   // 9. Define the coefficients, analytical solution, and rhs of the PDE.
+  // the coefficients and functions
   ConstantCoefficient k(1.0);
-
   VectorFunctionCoefficient fcoeff(dim, fFun);
   FunctionCoefficient fnatcoeff(f_natural);
   FunctionCoefficient gcoeff(gFun);
-
   VectorFunctionCoefficient ucoeff(dim, uFun_ex);
   FunctionCoefficient pcoeff(pFun_ex);
 
@@ -145,6 +153,40 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
   //The Bilinear block forms
   JJForm = new ParBilinearForm(fespaceRT);
   JVForm = new ParMixedBilinearForm(fespaceRT, fespaceL);
+
+  //Set the integrators/integral forms and assemble the block matrices/bilinear forms
+  JJForm->AddDomainIntegrator(new VectorFEMassIntegrator(k));
+  JJForm->Assemble();
+  JJForm->Finalize();
+
+  JVForm->AddDomainIntegrator(new VectorFEDivergenceIntegrator);
+  JVForm->Assemble();
+  JVForm->Finalize();
+
+  //Set the block bilinear/matrix operator
+  Array<int> empty_tdof_list;  // empty
+  TransposeOperator *Bt = NULL;
+
+  darcyEMOp = new BlockOperator(block_trueOffsets);
+  M = JJForm->ParallelAssemble();
+  B = JVForm->ParallelAssemble();
+  (*B) *= -1;
+  Bt = new TransposeOperator(B);
+
+  darcyEMOp->SetBlock(0,0, M);
+  darcyEMOp->SetBlock(0,1, Bt);
+  darcyEMOp->SetBlock(1,0, B);
+
+  //Set the block diagonal bilinear/matrix preconditioning operator
+  // darcyEMPr = ;
+};
+
+
+void DarcyEMProblem::Set_Solver(Solver *solver){
+  SolverPointer = shared_ptr<mfem::Solver>(solver);
+  SolverPointer->SetOperator(*darcyEMOp);
+//  SolverPointer->SetPreconditioner(*darcyPr);
+//  SolverPointer->SetPrintLevel(verbose);
 };
 
 

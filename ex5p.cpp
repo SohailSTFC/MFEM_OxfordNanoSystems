@@ -57,6 +57,7 @@ int main(int argc, char *argv[])
    int ref_levels = -1;
    int order = 1;
    bool par_format = false;
+   bool pa = false;
    const char *device_config = "cpu";
    bool visualization = 1;
    bool adios2 = false;
@@ -71,6 +72,10 @@ int main(int argc, char *argv[])
    args.AddOption(&par_format, "-pf", "--parallel-format", "-sf",
                   "--serial-format",
                   "Format to use when saving the results for VisIt.");
+   args.AddOption(&pa, "-pa", "--partial-assembly", "-no-pa",
+                  "--no-partial-assembly", "Enable Partial Assembly.");
+   args.AddOption(&device_config, "-d", "--device",
+                  "Device configuration string, see Device::Configure().");
    args.AddOption(&visualization, "-vis", "--visualization", "-no-vis",
                   "--no-visualization",
                   "Enable or disable GLVis visualization.");
@@ -187,9 +192,6 @@ int main(int argc, char *argv[])
    BlockVector trueX(block_trueOffsets, mt), trueRhs(block_trueOffsets, mt);
 
 
-   real_t sig = 1.0;
-//   DarcyEMProblem demoProb(R_space, W_space, sig, mt, dim);
-
    ParLinearForm *fform(new ParLinearForm);
    fform->Update(R_space, rhs.GetBlock(0), 0);
    fform->AddDomainIntegrator(new VectorFEDomainLFIntegrator(fcoeff));
@@ -221,10 +223,15 @@ int main(int argc, char *argv[])
    HypreParMatrix *M = NULL;
    HypreParMatrix *B = NULL;
 
+   if (pa) { mVarf->SetAssemblyLevel(AssemblyLevel::PARTIAL); }
    mVarf->AddDomainIntegrator(new VectorFEMassIntegrator(k));
    mVarf->Assemble();
+   if (!pa) { mVarf->Finalize(); }
+
+   if (pa) { bVarf->SetAssemblyLevel(AssemblyLevel::PARTIAL); }
    bVarf->AddDomainIntegrator(new VectorFEDivergenceIntegrator);
    bVarf->Assemble();
+   if (!pa) { bVarf->Finalize(); }
 
    BlockOperator *darcyOp = new BlockOperator(block_trueOffsets);
 
@@ -233,14 +240,32 @@ int main(int argc, char *argv[])
 
    TransposeOperator *Bt = NULL;
 
-   M = mVarf->ParallelAssemble();
-   B = bVarf->ParallelAssemble();
-   (*B) *= -1;
-   Bt = new TransposeOperator(B);
+   if (pa)
+   {
+      mVarf->FormSystemMatrix(empty_tdof_list, opM);
+      bVarf->FormRectangularSystemMatrix(empty_tdof_list, empty_tdof_list, opB);
+      Bt = new TransposeOperator(opB.Ptr());
 
-   darcyOp->SetBlock(0,0, M);
-   darcyOp->SetBlock(0,1, Bt);
-   darcyOp->SetBlock(1,0, B);
+      darcyOp->SetBlock(0,0, opM.Ptr());
+      darcyOp->SetBlock(0,1, Bt, -1.0);
+      darcyOp->SetBlock(1,0, opB.Ptr(), -1.0);
+   }
+   else
+   {
+      M = mVarf->ParallelAssemble();
+      B = bVarf->ParallelAssemble();
+      (*B) *= -1;
+      Bt = new TransposeOperator(B);
+
+      darcyOp->SetBlock(0,0, M);
+      darcyOp->SetBlock(0,1, Bt);
+      darcyOp->SetBlock(1,0, B);
+   }
+
+
+
+   real_t sig = 1.0;
+   DarcyEMProblem demoProb(R_space, W_space, sig, mt, dim);
 
 
    // 12. Construct the operators for preconditioner

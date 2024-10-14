@@ -28,20 +28,29 @@ class DarcyEMProblem
     //The permiativity of space
     real_t sigma;
 
-    //The linear and Bilinear forms of the block components
-    // (residual and jacobian)
-    ParBilinearForm JJForm;
+    //The Bilinear forms of the block components
+    // (Jacobian) (Assuming a symmetric Saddle point problem)
+    ParBilinearForm      *JJForm;
+    ParMixedBilinearForm *JVForm;
+
+    //The linear forms of the block components
+    // (residual)
     ParLinearForm   *JForm;
     ParLinearForm   *VForm;
 
     //The complete block vectors
-    BlockVector x, rhs;
-    BlockVector trueX, trueRhs;
+    BlockVector x_vec, b_vec;
+    BlockVector tx_vec, tb_vec;
 
 
-    // Form block operators 
+    // Form block operators (operates Matrix multiplication)
 	// (This aggregates the block components of the forms)
-    BlockOperator *darcyOp;
+    BlockOperator               *darcyEMOp;
+    BlockDiagonalPreconditioner *darcyEMPr;
+
+    //The Block hypre matrices
+    HypreParMatrix *M = NULL;
+    HypreParMatrix *B = NULL;
 
 
  //  BlockOperator *darcyOp = new BlockOperator(block_trueOffsets);
@@ -54,7 +63,6 @@ class DarcyEMProblem
 	//The constructor
     DarcyEMProblem(ParFiniteElementSpace *f1, ParFiniteElementSpace *f2
 	             , real_t sig, MemoryType deviceMT, int dim);
-
 
 	//The destructor
     ~DarcyEMProblem();
@@ -71,7 +79,7 @@ class DarcyEMProblem
 DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
                              , ParFiniteElementSpace *f2L
                              , real_t sig, MemoryType deviceMT, int dim)
-: fespaceRT(f1RT), fespaceL(f2L), JJForm(fespaceRT), sigma(sig)
+: fespaceRT(f1RT), fespaceL(f2L), sigma(sig)
 {
 
   // 8. Define the two BlockStructure of the problem.  block_offsets is used
@@ -96,58 +104,56 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
 
   // 10. Define the parallel grid function and parallel linear forms, solution
   //     vector and rhs.
-  x       = BlockVector(block_offsets, deviceMT);
-  rhs     = BlockVector(block_offsets, deviceMT);
-  trueX   = BlockVector(block_trueOffsets, deviceMT);
-  trueRhs = BlockVector(block_trueOffsets, deviceMT);
-
-   // 9. Define the coefficients, analytical solution, and rhs of the PDE.
-   ConstantCoefficient k(1.0);
-
-   VectorFunctionCoefficient fcoeff(dim, fFun);
-   FunctionCoefficient fnatcoeff(f_natural);
-   FunctionCoefficient gcoeff(gFun);
-
-   VectorFunctionCoefficient ucoeff(dim, uFun_ex);
-   FunctionCoefficient pcoeff(pFun_ex);
+  x_vec  = BlockVector(block_offsets, deviceMT);
+  b_vec  = BlockVector(block_offsets, deviceMT);
+  tx_vec = BlockVector(block_trueOffsets, deviceMT);
+  tb_vec = BlockVector(block_trueOffsets, deviceMT);
 
 
-   //DarcyEMProblem demoProb(fespaceRT, W_space, sig);
-   //v-Linear-form of the equation J + grad v = Je
-   VForm = new ParLinearForm;
-   VForm->Update(fespaceRT, rhs.GetBlock(0), 0);
-   VForm->AddDomainIntegrator(new VectorFEDomainLFIntegrator(fcoeff));
-   VForm->AddBoundaryIntegrator(new VectorFEBoundaryFluxLFIntegrator(fnatcoeff));
-   VForm->Assemble();
-   VForm->SyncAliasMemory(rhs);
-   VForm->ParallelAssemble(trueRhs.GetBlock(0));
-   trueRhs.GetBlock(0).SyncAliasMemory(trueRhs);
+  // 9. Define the coefficients, analytical solution, and rhs of the PDE.
+  ConstantCoefficient k(1.0);
 
-   //J-Linear-form of the equation  div J = q
-   JForm = new ParLinearForm;
-   JForm->Update(fespaceL, rhs.GetBlock(1), 0);
-   JForm->AddDomainIntegrator(new DomainLFIntegrator(gcoeff));
-   JForm->Assemble();
-   JForm->SyncAliasMemory(rhs);
-   JForm->ParallelAssemble(trueRhs.GetBlock(1));
-   trueRhs.GetBlock(1).SyncAliasMemory(trueRhs);
+  VectorFunctionCoefficient fcoeff(dim, fFun);
+  FunctionCoefficient fnatcoeff(f_natural);
+  FunctionCoefficient gcoeff(gFun);
+
+  VectorFunctionCoefficient ucoeff(dim, uFun_ex);
+  FunctionCoefficient pcoeff(pFun_ex);
+
+
+  //DarcyEMProblem demoProb(fespaceRT, W_space, sig);
+  //v-Linear-form of the equation J + grad v = Je
+  VForm = new ParLinearForm;
+  VForm->Update(fespaceRT, b_vec.GetBlock(0), 0);
+  VForm->AddDomainIntegrator(new VectorFEDomainLFIntegrator(fcoeff));
+  VForm->AddBoundaryIntegrator(new VectorFEBoundaryFluxLFIntegrator(fnatcoeff));
+  VForm->Assemble();
+  VForm->SyncAliasMemory(b_vec);
+  VForm->ParallelAssemble(tb_vec.GetBlock(0));
+  tb_vec.GetBlock(0).SyncAliasMemory(tb_vec);
+
+  //J-Linear-form of the equation  div J = q
+  JForm = new ParLinearForm;
+  JForm->Update(fespaceL, b_vec.GetBlock(1), 0);
+  JForm->AddDomainIntegrator(new DomainLFIntegrator(gcoeff));
+  JForm->Assemble();
+  JForm->SyncAliasMemory(b_vec);
+  JForm->ParallelAssemble(tb_vec.GetBlock(1));
+  tb_vec.GetBlock(1).SyncAliasMemory(tb_vec);
+
+
+  //The Bilinear block forms
+  JJForm = new ParBilinearForm(fespaceRT);
+  JVForm = new ParMixedBilinearForm(fespaceRT, fespaceL);
 };
 
-/*
-BlockOperator  JacobianOperator()
-{
-	
-}
-
-BlockOperator  PreconditionerOperator()
-{
-	
-}*/
 
 
 DarcyEMProblem::~DarcyEMProblem(){
    //delete darcyOp;
    delete JForm;
    delete VForm;
+   delete JJForm;
+   delete JVForm;
 };
 #endif

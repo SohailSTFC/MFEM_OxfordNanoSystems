@@ -145,162 +145,14 @@ int main(int argc, char *argv[])
    ParFiniteElementSpace *W_space = new ParFiniteElementSpace(pmesh, l2_coll);
 
 
-   HYPRE_BigInt dimR = R_space->GlobalTrueVSize();
-   HYPRE_BigInt dimW = W_space->GlobalTrueVSize();
-
-   if (verbose)
-   {
-      std::cout << "***********************************************************\n";
-      std::cout << "dim(R) = " << dimR << "\n";
-      std::cout << "dim(W) = " << dimW << "\n";
-      std::cout << "dim(R+W) = " << dimR + dimW << "\n";
-      std::cout << "***********************************************************\n";
-   }
-
-   // 8. Define the two BlockStructure of the problem.  block_offsets is used
-   //    for Vector based on dof (like ParGridFunction or ParLinearForm),
-   //    block_trueOffstes is used for Vector based on trueDof (HypreParVector
-   //    for the rhs and solution of the linear system).  The offsets computed
-   //    here are local to the processor.
-   Array<int> block_offsets(3); // number of variables + 1
-   block_offsets[0] = 0;
-   block_offsets[1] = R_space->GetVSize();
-   block_offsets[2] = W_space->GetVSize();
-   block_offsets.PartialSum();
-
-   Array<int> block_trueOffsets(3); // number of variables + 1
-   block_trueOffsets[0] = 0;
-   block_trueOffsets[1] = R_space->TrueVSize();
-   block_trueOffsets[2] = W_space->TrueVSize();
-   block_trueOffsets.PartialSum();
-
-
-   // 9. Define the coefficients, analytical solution, and rhs of the PDE.
-   ConstantCoefficient k(1.0);
-
-   VectorFunctionCoefficient fcoeff(dim, fFun);
-   FunctionCoefficient fnatcoeff(f_natural);
-   FunctionCoefficient gcoeff(gFun);
-
-   VectorFunctionCoefficient ucoeff(dim, uFun_ex);
-   FunctionCoefficient pcoeff(pFun_ex);
-
-   // 10. Define the parallel grid function and parallel linear forms, solution
-   //     vector and rhs.
-   MemoryType mt = device.GetMemoryType();
-   BlockVector x(block_offsets, mt), rhs(block_offsets, mt);
-   BlockVector trueX(block_trueOffsets, mt), trueRhs(block_trueOffsets, mt);
-
-
-   ParLinearForm *fform(new ParLinearForm);
-   fform->Update(R_space, rhs.GetBlock(0), 0);
-   fform->AddDomainIntegrator(new VectorFEDomainLFIntegrator(fcoeff));
-   fform->AddBoundaryIntegrator(new VectorFEBoundaryFluxLFIntegrator(fnatcoeff));
-   fform->Assemble();
-   fform->SyncAliasMemory(rhs);
-   fform->ParallelAssemble(trueRhs.GetBlock(0));
-   trueRhs.GetBlock(0).SyncAliasMemory(trueRhs);
-
-   ParLinearForm *gform(new ParLinearForm);
-   gform->Update(W_space, rhs.GetBlock(1), 0);
-   gform->AddDomainIntegrator(new DomainLFIntegrator(gcoeff));
-   gform->Assemble();
-   gform->SyncAliasMemory(rhs);
-   gform->ParallelAssemble(trueRhs.GetBlock(1));
-   trueRhs.GetBlock(1).SyncAliasMemory(trueRhs);
-
-   // 11. Assemble the finite element matrices for the Darcy operator
-   //
-   //                            D = [ M  B^T ]
-   //                                [ B   0  ]
-   //     where:
-   //
-   //     M = \int_\Omega k u_h \cdot v_h d\Omega   u_h, v_h \in R_h
-   //     B   = -\int_\Omega \div u_h q_h d\Omega   u_h \in R_h, q_h \in W_h
-   ParBilinearForm *mVarf(new ParBilinearForm(R_space));
-   ParMixedBilinearForm *bVarf(new ParMixedBilinearForm(R_space, W_space));
-
-   HypreParMatrix *M = NULL;
-   HypreParMatrix *B = NULL;
-
-   if (pa) { mVarf->SetAssemblyLevel(AssemblyLevel::PARTIAL); }
-   mVarf->AddDomainIntegrator(new VectorFEMassIntegrator(k));
-   mVarf->Assemble();
-   if (!pa) { mVarf->Finalize(); }
-
-   if (pa) { bVarf->SetAssemblyLevel(AssemblyLevel::PARTIAL); }
-   bVarf->AddDomainIntegrator(new VectorFEDivergenceIntegrator);
-   bVarf->Assemble();
-   if (!pa) { bVarf->Finalize(); }
-
-   BlockOperator *darcyOp = new BlockOperator(block_trueOffsets);
-
-   Array<int> empty_tdof_list;  // empty
-   OperatorPtr opM, opB;
-
-   TransposeOperator *Bt = NULL;
-
-   if (pa)
-   {
-      mVarf->FormSystemMatrix(empty_tdof_list, opM);
-      bVarf->FormRectangularSystemMatrix(empty_tdof_list, empty_tdof_list, opB);
-      Bt = new TransposeOperator(opB.Ptr());
-
-      darcyOp->SetBlock(0,0, opM.Ptr());
-      darcyOp->SetBlock(0,1, Bt, -1.0);
-      darcyOp->SetBlock(1,0, opB.Ptr(), -1.0);
-   }
-   else
-   {
-      M = mVarf->ParallelAssemble();
-      B = bVarf->ParallelAssemble();
-      (*B) *= -1;
-      Bt = new TransposeOperator(B);
-
-      darcyOp->SetBlock(0,0, M);
-      darcyOp->SetBlock(0,1, Bt);
-      darcyOp->SetBlock(1,0, B);
-   }
-
-
-
+   //Set up the problem
    real_t sig = 1.0;
+   MemoryType mt = device.GetMemoryType();
    DarcyEMProblem demoProb(R_space, W_space, sig, mt, dim);
 
 
-   // 12. Construct the operators for preconditioner
-   //
-   //                 P = [ diag(M)         0         ]
-   //                     [  0       B diag(M)^-1 B^T ]
-   //
-   //     Here we use Symmetric Gauss-Seidel to approximate the inverse of the
-   //     pressure Schur Complement.
-   HypreParMatrix *MinvBt = NULL;
-   HypreParVector *Md = NULL;
-   HypreParMatrix *S = NULL;
-   Vector Md_PA;
-   Solver *invM, *invS;
 
-   Md = new HypreParVector(MPI_COMM_WORLD, M->GetGlobalNumRows(),
-                           M->GetRowStarts());
-   M->GetDiag(*Md);
-
-   MinvBt = B->Transpose();
-   MinvBt->InvScaleRows(*Md);
-   S = ParMult(B, MinvBt);
-
-   invM = new HypreDiagScale(*M);
-   invS = new HypreBoomerAMG(*S);
-
-   invM->iterative_mode = false;
-   invS->iterative_mode = false;
-
-   BlockDiagonalPreconditioner *darcyPr = new BlockDiagonalPreconditioner(block_trueOffsets);
-   darcyPr->SetDiagonalBlock(0, invM);
-   darcyPr->SetDiagonalBlock(1, invS);
-
-   // 13. Solve the linear system with MINRES.
-   //     Check the norm of the unpreconditioned residual.
+   //Set up the linear/nonlinear solver
    int maxIter(500);
    real_t rtol(1.e-6);
    real_t atol(1.e-10);
@@ -311,14 +163,13 @@ int main(int argc, char *argv[])
    solver.SetAbsTol(atol);
    solver.SetRelTol(rtol);
    solver.SetMaxIter(maxIter);
-   solver.SetOperator(*darcyOp);
-   solver.SetPreconditioner(*darcyPr);
-   solver.SetPrintLevel(verbose);
-   trueX = 0.0;
-   solver.Mult(trueRhs, trueX);
-   if (device.IsEnabled()) { trueX.HostRead(); }
-   chrono.Stop();
+   demoProb.Set_Solver(&solver, verbose);
 
+   //Solve the equations
+   demoProb.Solve();
+//   if (device.IsEnabled()) { trueX.HostRead(); }
+   chrono.Stop();
+/*
    if (verbose)
    {
       if (solver.GetConverged())
@@ -419,24 +270,25 @@ int main(int argc, char *argv[])
       p_sock << "solution\n" << *pmesh << *p << "window_title 'Pressure'"
              << endl;
    }
+*/
 
    // 20. Free the used memory.
-   delete fform;
-   delete gform;
-   delete u;
-   delete p;
-   delete darcyOp;
-   delete darcyPr;
-   delete invM;
-   delete invS;
-   delete S;
-   delete Md;
-   delete MinvBt;
-   delete Bt;
-   delete B;
-   delete M;
-   delete mVarf;
-   delete bVarf;
+  // delete fform;
+  // delete gform;
+  // delete u;
+  // delete p;
+  // delete darcyOp;
+  // delete darcyPr;
+  // delete invM;
+  // delete invS;
+ //  delete S;
+ //  delete Md;
+  // delete MinvBt;
+  // delete Bt;
+ //  delete B;
+  // delete M;
+ //  delete mVarf;
+ //  delete bVarf;
    delete W_space;
    delete R_space;
    delete l2_coll;

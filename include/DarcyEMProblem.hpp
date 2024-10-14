@@ -48,10 +48,10 @@ class DarcyEMProblem
     BlockOperator               *darcyEMOp;
     BlockDiagonalPreconditioner *darcyEMPr;
 
-    //The Block hypre matrices
+    //The Block hypre matrices and Transposes
     HypreParMatrix *M = NULL;
     HypreParMatrix *B = NULL;
-
+    TransposeOperator *Bt = NULL;
 
     //Shared pointer to the solver
     shared_ptr<mfem::Solver> SolverPointer;
@@ -68,7 +68,7 @@ class DarcyEMProblem
 	             , real_t sig, MemoryType deviceMT, int dim);
 
     //Set a linear/non-linear solver
-    void Set_Solver(Solver *solver);
+    void Set_Solver(Solver *solver, bool verbosity);
 
     //Solve the equation
     void Solve();
@@ -90,6 +90,17 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
                              , real_t sig, MemoryType deviceMT, int dim)
 : fespaceRT(f1RT), fespaceL(f2L), sigma(sig)
 {
+
+   HYPRE_BigInt dimR = fespaceRT->GlobalTrueVSize();
+   HYPRE_BigInt dimW = fespaceL->GlobalTrueVSize();
+
+
+      std::cout << "***********************************************************\n";
+      std::cout << "dim(R) = " << dimR << "\n";
+      std::cout << "dim(W) = " << dimW << "\n";
+      std::cout << "dim(R+W) = " << dimR + dimW << "\n";
+      std::cout << "***********************************************************\n";
+
 
   // 8. Define the two BlockStructure of the problem.  block_offsets is used
   //    for Vector based on dof (like ParGridFunction or ParLinearForm),
@@ -113,10 +124,10 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
 
   // 10. Define the parallel grid function and parallel linear forms, solution
   //     vector and rhs.
-  x_vec  = BlockVector(block_offsets, deviceMT);
-  b_vec  = BlockVector(block_offsets, deviceMT);
-  tx_vec = BlockVector(block_trueOffsets, deviceMT);
-  tb_vec = BlockVector(block_trueOffsets, deviceMT);
+  x_vec  = new BlockVector(block_offsets, deviceMT);
+  b_vec  = new BlockVector(block_offsets, deviceMT);
+  tx_vec = new BlockVector(block_trueOffsets, deviceMT);
+  tb_vec = new BlockVector(block_trueOffsets, deviceMT);
 
 
   // 9. Define the coefficients, analytical solution, and rhs of the PDE.
@@ -165,7 +176,6 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
 
   //Set the block bilinear/matrix operator
   Array<int> empty_tdof_list;  // empty
-  TransposeOperator *Bt = NULL;
 
   darcyEMOp = new BlockOperator(block_trueOffsets);
   M = JJForm->ParallelAssemble();
@@ -182,20 +192,27 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
 };
 
 
-void DarcyEMProblem::Set_Solver(Solver *solver){
+void DarcyEMProblem::Set_Solver(Solver *solver, bool verbosity){
   SolverPointer = shared_ptr<mfem::Solver>(solver);
   SolverPointer->SetOperator(*darcyEMOp);
 //  SolverPointer->SetPreconditioner(*darcyPr);
-//  SolverPointer->SetPrintLevel(verbose);
+//  SolverPointer->SetPrintLevel(verbosity);
+};
+
+void DarcyEMProblem::Solve(){
+   tx_vec = 0.0;
+   SolverPointer->Mult(tb_vec, tx_vec);
 };
 
 
-
 DarcyEMProblem::~DarcyEMProblem(){
-   //delete darcyOp;
+   delete darcyEMOp;
    delete JForm;
    delete VForm;
    delete JJForm;
    delete JVForm;
+   delete M;
+   delete B;
+   delete Bt;
 };
 #endif

@@ -144,7 +144,6 @@ int main(int argc, char *argv[])
    ParFiniteElementSpace *R_space = new ParFiniteElementSpace(pmesh, hdiv_coll);
    ParFiniteElementSpace *W_space = new ParFiniteElementSpace(pmesh, l2_coll);
 
-
    //Set up the problem
    real_t sig = 1.0;
    MemoryType mt = device.GetMemoryType();
@@ -163,137 +162,21 @@ int main(int argc, char *argv[])
    solver.SetAbsTol(atol);
    solver.SetRelTol(rtol);
    solver.SetMaxIter(maxIter);
-   demoProb.Set_Solver(&solver, verbose);
+   solver.SetPrintLevel(verbose);
+   demoProb.BuildPreconditioner();
+   demoProb.Set_Solver(&solver);
 
    //Solve the equations
    demoProb.Solve();
-//   if (device.IsEnabled()) { trueX.HostRead(); }
    chrono.Stop();
-/*
-   if (verbose)
-   {
-      if (solver.GetConverged())
-         std::cout << "MINRES converged in " << solver.GetNumIterations()
-                   << " iterations with a residual norm of " << solver.GetFinalNorm() << ".\n";
-      else
-         std::cout << "MINRES did not converge in " << solver.GetNumIterations()
-                   << " iterations. Residual norm is " << solver.GetFinalNorm() << ".\n";
-      std::cout << "MINRES solver took " << chrono.RealTime() << "s. \n";
-   }
 
-   // 14. Extract the parallel grid function corresponding to the finite element
-   //     approximation X. This is the local solution on each processor. Compute
-   //     L2 error norms.
-   ParGridFunction *u(new ParGridFunction);
-   ParGridFunction *p(new ParGridFunction);
-   u->MakeRef(R_space, x.GetBlock(0), 0);
-   p->MakeRef(W_space, x.GetBlock(1), 0);
-   u->Distribute(&(trueX.GetBlock(0)));
-   p->Distribute(&(trueX.GetBlock(1)));
-
-   int order_quad = max(2, 2*order+1);
-   const IntegrationRule *irs[Geometry::NumGeom];
-   for (int i=0; i < Geometry::NumGeom; ++i)
-   {
-      irs[i] = &(IntRules.Get(i, order_quad));
-   }
-
-   real_t err_u  = u->ComputeL2Error(ucoeff, irs);
-   real_t norm_u = ComputeGlobalLpNorm(2, ucoeff, *pmesh, irs);
-   real_t err_p  = p->ComputeL2Error(pcoeff, irs);
-   real_t norm_p = ComputeGlobalLpNorm(2, pcoeff, *pmesh, irs);
-
-   if (verbose)
-   {
-      std::cout << "|| u_h - u_ex || / || u_ex || = " << err_u / norm_u << "\n";
-      std::cout << "|| p_h - p_ex || / || p_ex || = " << err_p / norm_p << "\n";
-   }
-
-   // 15. Save the refined mesh and the solution in parallel. This output can be
-   //     viewed later using GLVis: "glvis -np <np> -m mesh -g sol_*".
-   {
-      ostringstream mesh_name, u_name, p_name;
-      mesh_name << "mesh." << setfill('0') << setw(6) << myid;
-      u_name << "sol_u." << setfill('0') << setw(6) << myid;
-      p_name << "sol_p." << setfill('0') << setw(6) << myid;
-
-      ofstream mesh_ofs(mesh_name.str().c_str());
-      mesh_ofs.precision(8);
-      pmesh->Print(mesh_ofs);
-
-      ofstream u_ofs(u_name.str().c_str());
-      u_ofs.precision(8);
-      u->Save(u_ofs);
-
-      ofstream p_ofs(p_name.str().c_str());
-      p_ofs.precision(8);
-      p->Save(p_ofs);
-   }
-
-   // 16. Save data in the VisIt format
-   VisItDataCollection visit_dc("Example5-Parallel", pmesh);
-   visit_dc.RegisterField("velocity", u);
-   visit_dc.RegisterField("pressure", p);
-   visit_dc.SetFormat(!par_format ?
-                      DataCollection::SERIAL_FORMAT :
-                      DataCollection::PARALLEL_FORMAT);
-   visit_dc.Save();
-
-   // 17. Save data in the ParaView format
-   ParaViewDataCollection paraview_dc("Example5P", pmesh);
-   paraview_dc.SetPrefixPath("ParaView");
-   paraview_dc.SetLevelsOfDetail(order);
-   paraview_dc.SetDataFormat(VTKFormat::BINARY);
-   paraview_dc.SetHighOrderOutput(true);
-   paraview_dc.SetCycle(0);
-   paraview_dc.SetTime(0.0);
-   paraview_dc.RegisterField("velocity",u);
-   paraview_dc.RegisterField("pressure",p);
-   paraview_dc.Save();
-
-   // 19. Send the solution by socket to a GLVis server.
-   if (visualization)
-   {
-      char vishost[] = "localhost";
-      int  visport   = 19916;
-      socketstream u_sock(vishost, visport);
-      u_sock << "parallel " << num_procs << " " << myid << "\n";
-      u_sock.precision(8);
-      u_sock << "solution\n" << *pmesh << *u << "window_title 'Velocity'"
-             << endl;
-      // Make sure all ranks have sent their 'u' solution before initiating
-      // another set of GLVis connections (one from each rank):
-      MPI_Barrier(pmesh->GetComm());
-      socketstream p_sock(vishost, visport);
-      p_sock << "parallel " << num_procs << " " << myid << "\n";
-      p_sock.precision(8);
-      p_sock << "solution\n" << *pmesh << *p << "window_title 'Pressure'"
-             << endl;
-   }
-*/
 
    // 20. Free the used memory.
-  // delete fform;
-  // delete gform;
-  // delete u;
-  // delete p;
-  // delete darcyOp;
-  // delete darcyPr;
-  // delete invM;
-  // delete invS;
- //  delete S;
- //  delete Md;
-  // delete MinvBt;
-  // delete Bt;
- //  delete B;
-  // delete M;
- //  delete mVarf;
- //  delete bVarf;
-   delete W_space;
-   delete R_space;
-   delete l2_coll;
-   delete hdiv_coll;
-   delete pmesh;
-
+   demoProb.~DarcyEMProblem();
+ //  delete W_space;
+  // delete R_space;
+ //  delete l2_coll;
+  // delete hdiv_coll;
+  // delete pmesh;
    return 0;
 }

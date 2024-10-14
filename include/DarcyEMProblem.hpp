@@ -42,33 +42,36 @@ class DarcyEMProblem
     BlockVector x_vec, b_vec;
     BlockVector tx_vec, tb_vec;
 
-
     // Form block operators (operates Matrix multiplication)
 	// (This aggregates the block components of the forms)
-    BlockOperator               *darcyEMOp;
-    BlockDiagonalPreconditioner *darcyEMPr;
+    BlockOperator               *darcyEMOp = NULL;
+    BlockDiagonalPreconditioner *darcyEMPr = NULL;
 
-    //The Block hypre matrices and Transposes
+    //The Block hypre matrices and Transposes for Jacobian
     HypreParMatrix *M = NULL;
     HypreParMatrix *B = NULL;
     TransposeOperator *Bt = NULL;
 
     //Shared pointer to the solver
-    shared_ptr<mfem::Solver> SolverPointer;
+    shared_ptr<mfem::IterativeSolver> SolverPointer;
 
- //  BlockOperator *darcyOp = new BlockOperator(block_trueOffsets);
- //  Array<int> empty_tdof_list;  // empty
-  // OperatorPtr opM, opB;
-  // TransposeOperator *Bt = NULL;
-
+    //The Preconditioning objects
+    HypreParMatrix *MinvBt = NULL;
+    HypreParVector *Md = NULL;
+    HypreParMatrix *S = NULL;
+    Solver *invM, *invS;
 
   public:
 	//The constructor
     DarcyEMProblem(ParFiniteElementSpace *f1, ParFiniteElementSpace *f2
 	             , real_t sig, MemoryType deviceMT, int dim);
 
+
+    //Build and set a Preconditioner for the solver
+    void BuildPreconditioner();
+
     //Set a linear/non-linear solver
-    void Set_Solver(Solver *solver, bool verbosity);
+    void Set_Solver(IterativeSolver  *solver);
 
     //Solve the equation
     void Solve();
@@ -76,6 +79,7 @@ class DarcyEMProblem
 	//The destructor
     ~DarcyEMProblem();
 };
+
 
 
 //
@@ -91,15 +95,14 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
 : fespaceRT(f1RT), fespaceL(f2L), sigma(sig)
 {
 
-   HYPRE_BigInt dimR = fespaceRT->GlobalTrueVSize();
-   HYPRE_BigInt dimW = fespaceL->GlobalTrueVSize();
+  HYPRE_BigInt dimR = fespaceRT->GlobalTrueVSize();
+  HYPRE_BigInt dimW = fespaceL->GlobalTrueVSize();
 
-
-      std::cout << "***********************************************************\n";
-      std::cout << "dim(R) = " << dimR << "\n";
-      std::cout << "dim(W) = " << dimW << "\n";
-      std::cout << "dim(R+W) = " << dimR + dimW << "\n";
-      std::cout << "***********************************************************\n";
+  std::cout << "***********************************************************\n";
+  std::cout << "dim(R) = " << dimR << "\n";
+  std::cout << "dim(W) = " << dimW << "\n";
+  std::cout << "dim(R+W) = " << dimR + dimW << "\n";
+  std::cout << "***********************************************************\n";
 
 
   // 8. Define the two BlockStructure of the problem.  block_offsets is used
@@ -124,10 +127,10 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
 
   // 10. Define the parallel grid function and parallel linear forms, solution
   //     vector and rhs.
-  x_vec  = new BlockVector(block_offsets, deviceMT);
-  b_vec  = new BlockVector(block_offsets, deviceMT);
-  tx_vec = new BlockVector(block_trueOffsets, deviceMT);
-  tb_vec = new BlockVector(block_trueOffsets, deviceMT);
+  x_vec.Update  (block_offsets, deviceMT);
+  b_vec.Update  (block_offsets, deviceMT);
+  tx_vec.Update (block_trueOffsets, deviceMT);
+  tb_vec.Update (block_trueOffsets, deviceMT);
 
 
   // 9. Define the coefficients, analytical solution, and rhs of the PDE.
@@ -186,17 +189,36 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
   darcyEMOp->SetBlock(0,0, M);
   darcyEMOp->SetBlock(0,1, Bt);
   darcyEMOp->SetBlock(1,0, B);
-
-  //Set the block diagonal bilinear/matrix preconditioning operator
-  // darcyEMPr = ;
 };
 
 
-void DarcyEMProblem::Set_Solver(Solver *solver, bool verbosity){
-  SolverPointer = shared_ptr<mfem::Solver>(solver);
+void DarcyEMProblem::BuildPreconditioner()
+{
+   //Construct the a Schurr Complement
+   //Gauss-Seidel block Preconditioner
+   Md = new HypreParVector(MPI_COMM_WORLD, M->GetGlobalNumRows(),M->GetRowStarts());
+   M->GetDiag(*Md);
+
+   MinvBt = B->Transpose();
+   MinvBt->InvScaleRows(*Md);
+   S = ParMult(B, MinvBt);
+
+   invM = new HypreDiagScale(*M);
+   invS = new HypreBoomerAMG(*S);
+
+   invM->iterative_mode = false;
+   invS->iterative_mode = false;
+
+   //Set the block diagonal bilinear/matrix preconditioning operator
+   darcyEMPr = new BlockDiagonalPreconditioner(block_trueOffsets);
+   darcyEMPr->SetDiagonalBlock(0, invM);
+   darcyEMPr->SetDiagonalBlock(1, invS);
+}
+
+void DarcyEMProblem::Set_Solver(IterativeSolver *solver){
+  SolverPointer = shared_ptr<mfem::IterativeSolver >(solver);
   SolverPointer->SetOperator(*darcyEMOp);
-//  SolverPointer->SetPreconditioner(*darcyPr);
-//  SolverPointer->SetPrintLevel(verbosity);
+  if(darcyEMPr != NULL) SolverPointer->SetPreconditioner(*darcyEMPr);
 };
 
 void DarcyEMProblem::Solve(){
@@ -206,9 +228,9 @@ void DarcyEMProblem::Solve(){
 
 
 DarcyEMProblem::~DarcyEMProblem(){
-   delete darcyEMOp;
    delete JForm;
    delete VForm;
+   delete darcyEMOp;
    delete JJForm;
    delete JVForm;
    delete M;

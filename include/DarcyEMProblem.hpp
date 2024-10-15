@@ -92,9 +92,10 @@ class DarcyEMProblem
 DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
                              , ParFiniteElementSpace *f2L
                              , real_t sig, MemoryType deviceMT, int dim)
-: fespaceRT(f1RT), fespaceL(f2L), sigma(sig)
+: sigma(sig)
 {
-  
+  fespaceRT = new ParFiniteElementSpace(*f1RT);
+  fespaceL  = new ParFiniteElementSpace(*f2L);
 
   HYPRE_BigInt dimR = fespaceRT->GlobalTrueVSize();
   HYPRE_BigInt dimW = fespaceL->GlobalTrueVSize();
@@ -271,5 +272,7 @@ DarcyEMProblem::~DarcyEMProblem(){
    if(S         != NULL) delete S;
    if(invM      != NULL) delete invM;
    if(invS      != NULL) delete invS;
+   if(fespaceRT != NULL) delete fespaceRT;
+   if(fespaceL  != NULL) delete fespaceL;
 };
 #endif

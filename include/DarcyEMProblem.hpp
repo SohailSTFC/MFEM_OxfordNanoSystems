@@ -18,8 +18,8 @@ class DarcyEMProblem
 {
   protected:
     //Finite element spaces
-    ParFiniteElementSpace *fespaceRT; //Raviart Thomas elements
-    ParFiniteElementSpace *fespaceL;  //Lagrange finite element space
+    ParFiniteElementSpace *fespaceRT=NULL; //Raviart Thomas elements
+    ParFiniteElementSpace *fespaceL=NULL;  //Lagrange finite element space
 
     //Block Matrix structure offsets
     Array<int> block_offsets;     // number of variables + 1 (2-variables J and v)
@@ -30,17 +30,17 @@ class DarcyEMProblem
 
     //The Bilinear forms of the block components
     // (Jacobian) (Assuming a symmetric Saddle point problem)
-    ParBilinearForm      *JJForm;
-    ParMixedBilinearForm *JVForm;
+    ParBilinearForm      *JJForm=NULL;
+    ParMixedBilinearForm *JVForm=NULL;
 
     //The linear forms of the block components
     // (residual)
-    ParLinearForm   *JForm;
-    ParLinearForm   *VForm;
+    ParLinearForm   *JForm=NULL;
+    ParLinearForm   *VForm=NULL;
 
     //The complete block vectors
-    BlockVector x_vec, b_vec;
-    BlockVector tx_vec, tb_vec;
+    mutable BlockVector x_vec, b_vec;
+    mutable BlockVector tx_vec, tb_vec;
 
     // Form block operators (operates Matrix multiplication)
 	// (This aggregates the block components of the forms)
@@ -53,13 +53,13 @@ class DarcyEMProblem
     TransposeOperator *Bt = NULL;
 
     //Shared pointer to the solver
-    shared_ptr<mfem::IterativeSolver> SolverPointer;
+    IterativeSolver* solver=NULL;
 
     //The Preconditioning objects
     HypreParMatrix *MinvBt = NULL;
     HypreParVector *Md = NULL;
     HypreParMatrix *S = NULL;
-    Solver *invM, *invS;
+    Solver *invM=NULL, *invS=NULL;
 
   public:
 	//The constructor
@@ -71,7 +71,7 @@ class DarcyEMProblem
     void BuildPreconditioner();
 
     //Set a linear/non-linear solver
-    void Set_Solver(IterativeSolver  *solver);
+    void Set_Solver(bool verbose);
 
     //Solve the equation
     void Solve(bool verbose);
@@ -94,6 +94,7 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
                              , real_t sig, MemoryType deviceMT, int dim)
 : fespaceRT(f1RT), fespaceL(f2L), sigma(sig)
 {
+  
 
   HYPRE_BigInt dimR = fespaceRT->GlobalTrueVSize();
   HYPRE_BigInt dimW = fespaceL->GlobalTrueVSize();
@@ -127,6 +128,7 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
 
   // 10. Define the parallel grid function and parallel linear forms, solution
   //     vector and rhs.
+
   x_vec.Update  (block_offsets, deviceMT);
   b_vec.Update  (block_offsets, deviceMT);
   tx_vec.Update (block_trueOffsets, deviceMT);
@@ -135,6 +137,7 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
 
   // 9. Define the coefficients, analytical solution, and rhs of the PDE.
   // the coefficients and functions
+
   ConstantCoefficient k(1.0);
   VectorFunctionCoefficient fcoeff(dim, fFun);
   FunctionCoefficient fnatcoeff(f_natural);
@@ -215,37 +218,47 @@ void DarcyEMProblem::BuildPreconditioner()
    darcyEMPr->SetDiagonalBlock(1, invS);
 }
 
-void DarcyEMProblem::Set_Solver(IterativeSolver *solver){
-  SolverPointer = shared_ptr<mfem::IterativeSolver >(solver);
-  SolverPointer->SetOperator(*darcyEMOp);
-  if(darcyEMPr != NULL) SolverPointer->SetPreconditioner(*darcyEMPr);
+
+void DarcyEMProblem::Set_Solver( bool verbosity){
+
+   int maxIter(500);
+   real_t rtol(1.e-6);
+   real_t atol(1.e-10);
+   solver = new MINRESSolver(MPI_COMM_WORLD);
+   solver->SetAbsTol(atol);
+   solver->SetRelTol(rtol);
+   solver->SetMaxIter(maxIter);
+   solver->SetPrintLevel(verbosity);
+  if(darcyEMOp != NULL) solver->SetOperator(*darcyEMOp);
+  if(darcyEMPr != NULL) solver->SetPreconditioner(*darcyEMPr);
 };
 
-void DarcyEMProblem::Solve(bool verbose){
+
+void DarcyEMProblem::Solve(bool verbosity){
+
    StopWatch chrono;
    chrono.Clear();
    chrono.Start();
    tx_vec = 0.0;
-   SolverPointer->Mult(tb_vec, tx_vec);
+   solver->Mult(tb_vec, tx_vec);
    chrono.Stop();
 
-   if (verbose)
+   if (verbosity)
    {
-      if (SolverPointer->GetConverged())
-         std::cout << "MINRES converged in " << SolverPointer->GetNumIterations()
-                   << " iterations with a residual norm of " << SolverPointer->GetFinalNorm() << ".\n";
+      if(solver->GetConverged())
+        std::cout << "MINRES converged in " << solver->GetNumIterations()
+                  << " iterations with a residual norm of " << solver->GetFinalNorm() << ".\n";
       else
-         std::cout << "MINRES did not converge in " << SolverPointer->GetNumIterations()
-                   << " iterations. Residual norm is " << SolverPointer->GetFinalNorm() << ".\n";
-      std::cout << "MINRES solver took " << chrono.RealTime() << "s. \n";
+        std::cout << "MINRES did not converge in " << solver->GetNumIterations()
+                  << " iterations. Residual norm is " << solver->GetFinalNorm() << ".\n";
+        std::cout << "MINRES solver took " << chrono.RealTime() << "s. \n";
    }
 };
 
 
 DarcyEMProblem::~DarcyEMProblem(){
-   SolverPointer.reset();
    if(JForm     != NULL) delete JForm;
-   if(VForm     != NULL) delete VForm;
+ /*  if(VForm     != NULL) delete VForm;
    if(darcyEMOp != NULL) delete darcyEMOp;
    if(darcyEMPr != NULL) delete darcyEMPr;
    if(JJForm    != NULL) delete JJForm;
@@ -259,6 +272,6 @@ DarcyEMProblem::~DarcyEMProblem(){
    if(invM      != NULL) delete invM;
    if(invS      != NULL) delete invS;
    if(fespaceRT != NULL) delete fespaceRT;
-   if(fespaceL  != NULL) delete fespaceL;
+   if(fespaceL  != NULL) delete fespaceL;*/
 };
 #endif

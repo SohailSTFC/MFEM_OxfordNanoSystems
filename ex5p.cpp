@@ -357,6 +357,7 @@ int main(int argc, char *argv[])
    // 14. Extract the parallel grid function corresponding to the finite element
    //     approximation X. This is the local solution on each processor. Compute
    //     L2 error norms.
+/*
    ParGridFunction *u(new ParGridFunction);
    ParGridFunction *p(new ParGridFunction);
    u->MakeRef(R_space, x.GetBlock(0), 0);
@@ -463,12 +464,12 @@ int main(int argc, char *argv[])
       p_sock << "solution\n" << *pmesh << *p << "window_title 'Pressure'"
              << endl;
    }
-
+*/
    // 20. Free the used memory.
    delete fform;
    delete gform;
-   delete u;
-   delete p;
+   //delete u;
+  // delete p;
    delete darcyOp;
    delete darcyPr;
    delete invM;

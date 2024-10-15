@@ -166,7 +166,7 @@ int main(int argc, char *argv[])
 
 
    // 20. Free the used memory.
-   demoProb.~DarcyEMProblem();
+//   demoProb.~DarcyEMProblem();
    delete W_space;
    delete R_space;
    delete l2_coll;

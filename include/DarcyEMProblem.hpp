@@ -258,7 +258,7 @@ void DarcyEMProblem::Solve(bool verbosity){
 
 DarcyEMProblem::~DarcyEMProblem(){
    if(JForm     != NULL) delete JForm;
- /*  if(VForm     != NULL) delete VForm;
+   if(VForm     != NULL) delete VForm;
    if(darcyEMOp != NULL) delete darcyEMOp;
    if(darcyEMPr != NULL) delete darcyEMPr;
    if(JJForm    != NULL) delete JJForm;
@@ -271,7 +271,5 @@ DarcyEMProblem::~DarcyEMProblem(){
    if(S         != NULL) delete S;
    if(invM      != NULL) delete invM;
    if(invS      != NULL) delete invS;
-   if(fespaceRT != NULL) delete fespaceRT;
-   if(fespaceL  != NULL) delete fespaceL;*/
 };
 #endif

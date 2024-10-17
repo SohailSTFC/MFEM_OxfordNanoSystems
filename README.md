@@ -9,6 +9,5 @@ H1 spaces.
 - \nabla \cdot \vec{J} = Q,}
 ```
 
-
-This Library is dependant on MFEM and HYPRE, MPI (OpenMPI was used) and a 
-C-compiler (GCC) however these are straight forward to install.
+This application is dependant on MFEM, METIS/PARMETIS, HYPRE, MPI (OpenMPI was used) and a 
+C-compiler (GCC was used) however these are straight forward to install.

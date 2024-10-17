@@ -42,6 +42,10 @@ class DarcyEMProblem
     mutable BlockVector x_vec, b_vec;
     mutable BlockVector tx_vec, tb_vec;
 
+    //The fields (Needed for postprocessing
+    vector<std::string>      FieldNames;
+	vector<ParGridFunction*> Fields;
+
     // Form block operators (operates Matrix multiplication)
 	// (This aggregates the block components of the forms)
     BlockOperator               *darcyEMOp = NULL;
@@ -75,6 +79,12 @@ class DarcyEMProblem
 
     //Solve the equation
     void Solve(bool verbose);
+
+    //Make the fields for post-processing
+    void SetFields();
+
+    //Returns a const pointer to vector
+	//of fields
 
 	//The destructor
     ~DarcyEMProblem();
@@ -221,7 +231,6 @@ void DarcyEMProblem::BuildPreconditioner()
 
 
 void DarcyEMProblem::Set_Solver( bool verbosity){
-
    int maxIter(500);
    real_t rtol(1.e-6);
    real_t atol(1.e-10);
@@ -236,27 +245,43 @@ void DarcyEMProblem::Set_Solver( bool verbosity){
 
 
 void DarcyEMProblem::Solve(bool verbosity){
+  if(darcyEMOp != NULL){
+    StopWatch chrono;
+    chrono.Clear();
+    chrono.Start();
+    tx_vec = 0.0;
+    solver->Mult(tb_vec, tx_vec);
+    chrono.Stop();
 
-   StopWatch chrono;
-   chrono.Clear();
-   chrono.Start();
-   tx_vec = 0.0;
-   solver->Mult(tb_vec, tx_vec);
-   chrono.Stop();
-
-   if (verbosity)
-   {
-      if(solver->GetConverged())
-        std::cout << "MINRES converged in " << solver->GetNumIterations()
-                  << " iterations with a residual norm of " << solver->GetFinalNorm() << ".\n";
-      else
-        std::cout << "MINRES did not converge in " << solver->GetNumIterations()
-                  << " iterations. Residual norm is " << solver->GetFinalNorm() << ".\n";
-        std::cout << "MINRES solver took " << chrono.RealTime() << "s. \n";
-   }
+    if (verbosity)
+    {
+       if(solver->GetConverged())
+         std::cout << "MINRES converged in " << solver->GetNumIterations()
+                   << " iterations with a residual norm of " << solver->GetFinalNorm() << ".\n";
+       else
+         std::cout << "MINRES did not converge in " << solver->GetNumIterations()
+                   << " iterations. Residual norm is " << solver->GetFinalNorm() << ".\n";
+         std::cout << "MINRES solver took " << chrono.RealTime() << "s. \n";
+    }
+  }else{
+    if (verbosity) std::cout << "Error Darcy operator not built" << ".\n";
+  }
 };
 
 
+void DarcyEMProblem::SetFields(){
+  FieldNames.push_back("Velocity");
+  Fields.push_back(new ParGridFunction);
+  Fields[0]->MakeRef(fespaceRT, x_vec.GetBlock(0), 0);
+  Fields[0]->Distribute(&(tx_vec.GetBlock(0)));
+
+  FieldNames.push_back("Pressure");
+  Fields.push_back(new ParGridFunction);
+  Fields[1]->MakeRef(fespaceL, x_vec.GetBlock(1), 0);
+  Fields[1]->Distribute(&(tx_vec.GetBlock(1)));
+};
+
+	
 DarcyEMProblem::~DarcyEMProblem(){
    if(JForm     != NULL) delete JForm;
    if(VForm     != NULL) delete VForm;
@@ -270,9 +295,5 @@ DarcyEMProblem::~DarcyEMProblem(){
    if(MinvBt    != NULL) delete MinvBt;
    if(Md        != NULL) delete Md;
    if(S         != NULL) delete S;
-   if(invM      != NULL) delete invM;
-   if(invS      != NULL) delete invS;
-   if(fespaceRT != NULL) delete fespaceRT;
-   if(fespaceL  != NULL) delete fespaceL;
 };
 #endif

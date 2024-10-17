@@ -1,6 +1,6 @@
 BSD 3-Clause License
 
-Copyright (c) 2024, Karthikeyan Chockalingam and Nuno Nobre, STFC Hartree Centre
+Copyright (c) 2024, Sohail Rathore, STFC Hartree Centre
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:

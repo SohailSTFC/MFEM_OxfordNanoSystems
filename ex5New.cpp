@@ -146,27 +146,14 @@ int main(int argc, char *argv[])
    real_t sig = 1.0;
    MemoryType mt = device.GetMemoryType();
    DarcyEMProblem demoProb(R_space, W_space, sig, mt, dim);
-
-
-   //Set up the linear/nonlinear solver
-   int maxIter(500);
-   real_t rtol(1.e-6);
-   real_t atol(1.e-10);
-
-   MINRESSolver solver(MPI_COMM_WORLD);
-   solver.SetAbsTol(atol);
-   solver.SetRelTol(rtol);
-   solver.SetMaxIter(maxIter);
-   solver.SetPrintLevel(verbose);
    demoProb.BuildPreconditioner();
-   demoProb.Set_Solver(&solver);
+   demoProb.Set_Solver(verbose);
 
    //Solve the equations
    demoProb.Solve(verbose);
 
 
    // 20. Free the used memory.
-//   demoProb.~DarcyEMProblem();
    delete W_space;
    delete R_space;
    delete l2_coll;

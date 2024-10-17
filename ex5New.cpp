@@ -36,6 +36,7 @@
 // Define the analytical solution and forcing terms / boundary conditions
 #include "include/AnalyticSolution.hpp"
 #include "include/DarcyEMProblem.hpp"
+#include "include/DarcyVisualisation.hpp"
 
 using namespace std;
 using namespace mfem;
@@ -152,6 +153,12 @@ int main(int argc, char *argv[])
    //Solve the equations
    demoProb.Solve(verbose);
 
+   //Prepare the fields
+   demoProb.SetFields();
+	
+   //Visualise the results using ParaView
+   double time = 0.0;
+   ParaViewVisualise(demoProb.Fields, demoProb.FieldNames, order, pmesh, time);
 
    // 20. Free the used memory.
    delete W_space;

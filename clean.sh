@@ -5,4 +5,4 @@
 #
 
 
-rm -r ex5New ex5p
+rm -r ex5New ex5p ParaView

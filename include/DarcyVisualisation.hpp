@@ -5,6 +5,9 @@
 #include <fstream>
 #include <iostream>
 
+using namespace std;
+using namespace mfem;
+
 void ParaViewVisualise(std::vector<ParGridFunction*> Fields
                      , std::vector<std::string>      FieldNames
 					 , int order, ParMesh *pmesh, double time){
@@ -19,6 +22,5 @@ void ParaViewVisualise(std::vector<ParGridFunction*> Fields
   for(int I=0; I< FieldNames.size(); I++) paraview_dc.RegisterField(FieldNames[I],Fields[I]);
   paraview_dc.Save();
 };
-
 
 #endif

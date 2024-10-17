@@ -42,10 +42,6 @@ class DarcyEMProblem
     mutable BlockVector x_vec, b_vec;
     mutable BlockVector tx_vec, tb_vec;
 
-    //The fields (Needed for postprocessing
-    vector<std::string>      FieldNames;
-	vector<ParGridFunction*> Fields;
-
     // Form block operators (operates Matrix multiplication)
 	// (This aggregates the block components of the forms)
     BlockOperator               *darcyEMOp = NULL;
@@ -66,6 +62,13 @@ class DarcyEMProblem
     Solver *invM=NULL, *invS=NULL;
 
   public:
+    //The fields (Needed for postprocessing)
+    //Made public for external access (not a great solution
+	//but hey it works)
+    vector<std::string>      FieldNames;
+	vector<ParGridFunction*> Fields;
+
+
 	//The constructor
     DarcyEMProblem(ParFiniteElementSpace *f1, ParFiniteElementSpace *f2
 	             , real_t sig, MemoryType deviceMT, int dim);
@@ -83,9 +86,6 @@ class DarcyEMProblem
     //Make the fields for post-processing
     void SetFields();
 
-    //Returns a const pointer to vector
-	//of fields
-
 	//The destructor
     ~DarcyEMProblem();
 };
@@ -99,6 +99,8 @@ class DarcyEMProblem
 //
 
 //The constructor
+//Constructs the problem and sets-up
+//residual+jacobian operators/Forms
 DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
                              , ParFiniteElementSpace *f2L
                              , real_t sig, MemoryType deviceMT, int dim)
@@ -205,7 +207,8 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
   darcyEMOp->SetBlock(1,0, B);
 };
 
-
+//Builds a preconditioner needed to
+//accelerate the Darcy problem solver (Optional)
 void DarcyEMProblem::BuildPreconditioner()
 {
    //Construct the a Schurr Complement
@@ -229,7 +232,8 @@ void DarcyEMProblem::BuildPreconditioner()
    darcyEMPr->SetDiagonalBlock(1, invS);
 }
 
-
+//Sets the linear/non-linear solver
+//for the Darcy problem
 void DarcyEMProblem::Set_Solver( bool verbosity){
    int maxIter(500);
    real_t rtol(1.e-6);
@@ -243,7 +247,8 @@ void DarcyEMProblem::Set_Solver( bool verbosity){
   if(darcyEMPr != NULL) solver->SetPreconditioner(*darcyEMPr);
 };
 
-
+//Solves the system of equations
+//for the Darcy problem
 void DarcyEMProblem::Solve(bool verbosity){
   if(darcyEMOp != NULL){
     StopWatch chrono;
@@ -268,7 +273,8 @@ void DarcyEMProblem::Solve(bool verbosity){
   }
 };
 
-
+//Setting-up/unpacking the fields for the Darcy problem
+//these are needed before post-processing
 void DarcyEMProblem::SetFields(){
   FieldNames.push_back("Velocity");
   Fields.push_back(new ParGridFunction);

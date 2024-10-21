@@ -36,7 +36,7 @@
 // Define the analytical solution and forcing terms / boundary conditions
 #include "include/AnalyticSolution.hpp"
 #include "include/DarcyEMProblem.hpp"
-#include "include/DarcyVisualisation.hpp"
+#include "include/Visualisation.hpp"
 
 using namespace std;
 using namespace mfem;
@@ -52,7 +52,8 @@ int main(int argc, char *argv[])
    bool verbose = (myid == 0);
 
    // 2. Parse command-line options.
-   const char *mesh_file = "mesh/star.mesh";
+//   const char *mesh_file = "mesh/star.mesh";
+   const char *mesh_file = "mesh/OxNanoSys0.mesh";
    int ref_levels = -1;
    int order = 1;
    bool par_format = false;
@@ -103,8 +104,13 @@ int main(int argc, char *argv[])
    // 4. Read the (serial) mesh from the given mesh file on all processors.  We
    //    can handle triangular, quadrilateral, tetrahedral, hexahedral, surface
    //    and volume meshes with the same code.
+
+
+/////void Mesh::ReadTrueGridMesh(std::istream &input)
    Mesh *mesh = new Mesh(mesh_file, 1, 1);
    int dim = mesh->Dimension();
+
+
 
    // 5. Refine the serial mesh on all processors to increase the resolution. In
    //    this example we do 'ref_levels' of uniform refinement. We choose

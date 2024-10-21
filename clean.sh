@@ -5,4 +5,4 @@
 #
 
 
-rm -r ex5New ex5p ParaView
+rm -r DarcyEM ParaView

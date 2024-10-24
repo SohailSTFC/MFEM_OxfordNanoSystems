@@ -34,7 +34,7 @@
 #include <iostream>
 
 // Define the analytical solution and forcing terms / boundary conditions
-#include "include/AnalyticSolution.hpp"
+#include "include/BoundaryAndInitialSolution.hpp"
 #include "include/DarcyEMProblem.hpp"
 #include "include/Visualisation.hpp"
 
@@ -116,7 +116,7 @@ int main(int argc, char *argv[])
    //    this example we do 'ref_levels' of uniform refinement. We choose
    //    'ref_levels' to be the largest number that gives a final mesh with no
    //    more than 10,000 elements, unless the user specifies it as input.
-   {
+ /*  {
       if (ref_levels == -1)
       {
          ref_levels = (int)floor(log(10000./mesh->GetNE())/log(2.)/dim);
@@ -126,7 +126,7 @@ int main(int argc, char *argv[])
       {
          mesh->UniformRefinement();
       }
-   }
+   }*/
 
    // 6. Define a parallel mesh by a partitioning of the serial mesh. Refine
    //    this mesh further in parallel to increase the resolution. Once the
@@ -153,15 +153,14 @@ int main(int argc, char *argv[])
    real_t sig = 1.0;
    MemoryType mt = device.GetMemoryType();
    DarcyEMProblem demoProb(R_space, W_space, sig, mt, dim);
-   demoProb.BuildPreconditioner();
+	
+   //Set the solver and preconditioner
+   //demoProb.BuildPreconditioner();
    demoProb.Set_Solver(verbose);
 
    //Solve the equations
    demoProb.Solve(verbose);
 
-   //Prepare the fields
-   demoProb.SetFields();
-	
    //Visualise the results using ParaView
    double time = 0.0;
    ParaViewVisualise(demoProb.Fields, demoProb.FieldNames, order, pmesh, time);

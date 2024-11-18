@@ -116,7 +116,7 @@ int main(int argc, char *argv[])
    //    this example we do 'ref_levels' of uniform refinement. We choose
    //    'ref_levels' to be the largest number that gives a final mesh with no
    //    more than 10,000 elements, unless the user specifies it as input.
- /*  {
+/*   {
       if (ref_levels == -1)
       {
          ref_levels = (int)floor(log(10000./mesh->GetNE())/log(2.)/dim);
@@ -126,8 +126,8 @@ int main(int argc, char *argv[])
       {
          mesh->UniformRefinement();
       }
-   }*/
-
+   }
+*/
    // 6. Define a parallel mesh by a partitioning of the serial mesh. Refine
    //    this mesh further in parallel to increase the resolution. Once the
    //    parallel mesh is defined, the serial mesh can be deleted.
@@ -143,8 +143,8 @@ int main(int argc, char *argv[])
 
    // 7. Define a parallel finite element space on the parallel mesh. Here we
    //    use the Raviart-Thomas finite elements of the specified order.
-   FiniteElementCollection *hdiv_coll(new RT_FECollection(order, dim));
-   FiniteElementCollection *l2_coll(new L2_FECollection(order, dim));
+   FiniteElementCollection *hdiv_coll(new RT_FECollection(order+1, dim));
+   FiniteElementCollection *l2_coll(new H1_FECollection(order));
 
    ParFiniteElementSpace *R_space = new ParFiniteElementSpace(pmesh, hdiv_coll);
    ParFiniteElementSpace *W_space = new ParFiniteElementSpace(pmesh, l2_coll);

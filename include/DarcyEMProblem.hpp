@@ -219,7 +219,7 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
   JJForm->FormSystemMatrix( *(essential_tdof_list[0]), opM);
   JVForm->FormRectangularSystemMatrix( *(essential_tdof_list[0]), *(essential_tdof_list[1]), opB);
   Bt = new TransposeOperator(opB.Ptr());
-  VVForm->FormSystemMatrix( *(essential_tdof_list[0]), opD);
+  VVForm->FormSystemMatrix( *(essential_tdof_list[1]), opD);
 
   //Set the block matrix operator
   darcyEMOp = new BlockOperator(block_trueOffsets);
@@ -319,6 +319,7 @@ void DarcyEMProblem::SetFieldBCs(){
     if(K == 1){ //Checks if boundary is active
       Array<int> ess_tdof;
       fespaceRT->GetEssentialVDofs( *(essential_tdof_list[0]), ess_tdof, I);
+      cout << ess_tdof.Size() << "\n";
 	  x_vec.GetBlock(0).SetSubVector( ess_tdof, DirchVal[0][I] );
 	  b_vec.GetBlock(0).SetSubVector( ess_tdof, DirchVal[0][I] );
     }
@@ -331,6 +332,7 @@ void DarcyEMProblem::SetFieldBCs(){
     if(K == 1){ //Checks if boundary is active
       Array<int> ess_tdof;
       fespaceL->GetEssentialVDofs( *(essential_tdof_list[1]), ess_tdof, I);
+      cout << ess_tdof.Size() << "\n";
 	  x_vec.GetBlock(1).SetSubVector( ess_tdof, DirchVal[1][I] );
 	  b_vec.GetBlock(1).SetSubVector( ess_tdof, DirchVal[1][I] );
     }
@@ -365,7 +367,7 @@ void DarcyEMProblem::BuildPreconditioner()
 //Sets the linear/non-linear solver
 //for the Darcy problem
 void DarcyEMProblem::Set_Solver( bool verbosity){
-   int maxIter(500);
+   int maxIter(10);
    real_t rtol(1.e-6);
    real_t atol(1.e-10);
    solver = new MINRESSolver(MPI_COMM_WORLD);

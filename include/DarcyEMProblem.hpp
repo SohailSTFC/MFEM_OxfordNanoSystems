@@ -34,7 +34,7 @@ class DarcyEMProblem
     //The Bilinear forms of the block components
     // (Jacobian) (Assuming a symmetric Saddle point problem)
     ParBilinearForm      *JJForm=NULL, *VVForm=NULL;
-    ParMixedBilinearForm *JVForm=NULL;
+    ParMixedBilinearForm *JVForm=NULL, *VJForm=NULL;
 
     //The linear forms of the block components
     // (residual)
@@ -52,7 +52,7 @@ class DarcyEMProblem
 
     //The Block hypre matrices and Transposes for Jacobian
     TransposeOperator *Bt = NULL;
-    OperatorPtr opM, opB, opD;
+    OperatorPtr opM, opB, opC, opD;
     Vector Md_PA;
 
     //Shared pointer to the solver
@@ -65,9 +65,9 @@ class DarcyEMProblem
     Solver *invM=NULL, *invS=NULL;
 
     //Boundary Conditions
-    Array<Array<int> *>    essential_tdof_list; //Dirchelet(essential) BC trueDofs
     Array<Array<int> *>    essential_bdr;       //Dirchelet(essential) BCs tags
     vector<vector<double>> DirchVal;            //Dirchelet value of BC
+    Array<int> ess_tdof_J, ess_tdof_v;
 
     //Read in and set the Boundary conditions
     void SetBCsArrays();
@@ -199,11 +199,13 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
   //
   // The Bilinear forms (matrix/jacobian forms)
   //
+  Array<int> ess_tdof_empty;
+
   //The Bilinear block forms
   JJForm = new ParBilinearForm(fespaceRT);
   JVForm = new ParMixedBilinearForm(fespaceRT, fespaceL);
+  VJForm = new ParMixedBilinearForm(fespaceRT, fespaceL);
   VVForm = new ParBilinearForm(fespaceL);
-
 
   //Set the integrators/integral forms and assemble the block matrices/bilinear forms
   JJForm->AddDomainIntegrator(new VectorFEMassIntegrator(k));
@@ -212,20 +214,23 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
   JVForm->AddDomainIntegrator(new VectorFEDivergenceIntegrator);
   JVForm->Assemble();;
 
+  VJForm->AddDomainIntegrator(new VectorFEDivergenceIntegrator);
+  VJForm->Assemble();
+
   VVForm->Assemble();
 
-
   //Set the BCs and finalize the bilinear forms
-  JJForm->FormSystemMatrix( *(essential_tdof_list[0]), opM);
-  JVForm->FormRectangularSystemMatrix( *(essential_tdof_list[0]), *(essential_tdof_list[1]), opB);
+  JJForm->FormSystemMatrix( ess_tdof_J, opM);
+  JVForm->FormRectangularSystemMatrix( ess_tdof_J, ess_tdof_empty, opB);
+  VJForm->FormRectangularSystemMatrix( ess_tdof_empty, ess_tdof_v, opC);
   Bt = new TransposeOperator(opB.Ptr());
-  VVForm->FormSystemMatrix( *(essential_tdof_list[1]), opD);
+  VVForm->FormSystemMatrix( ess_tdof_v, opD);
 
   //Set the block matrix operator
   darcyEMOp = new BlockOperator(block_trueOffsets);
   darcyEMOp->SetBlock(0,0, opM.Ptr());
   darcyEMOp->SetBlock(0,1, Bt, -1.0);
-  darcyEMOp->SetBlock(1,0, opB.Ptr(), -1.0);
+  darcyEMOp->SetBlock(1,0, opC.Ptr(), -1.0);
   darcyEMOp->SetBlock(1,1, opD.Ptr());
 };
 
@@ -256,14 +261,11 @@ void DarcyEMProblem::SetBCsArrays(){
   essential_bdr = Array<Array<int> *>(essential_bdr_tmp);
 
   //Find the True Dofs
-  Array<int> ess_tdof_J, ess_tdof_v, ess_tdof_v1;
   fespaceRT->GetEssentialTrueDofs(*essential_bdr[0], ess_tdof_J);
   fespaceL->GetEssentialTrueDofs(*essential_bdr[1], ess_tdof_v);
 
-  Array<Array<int> *> ess_tdof_tmp(2);
-  ess_tdof_tmp[0] = &ess_tdof_J;
-  ess_tdof_tmp[1] = &ess_tdof_v;
-  essential_tdof_list = Array<Array<int>*>(ess_tdof_tmp);
+  cout << setw(10) << "RT elements: " << setw(10) << ess_tdof_J.Size() << "\n";
+  cout << setw(10) << "H1 elements: " << setw(10) << ess_tdof_v.Size() << "\n";
 
   //The Dirchelet BC values
   vector<double> DirchVal_tmp;
@@ -307,6 +309,7 @@ void DarcyEMProblem::SetFieldBCs(){
   ess_bdr_J[3] = 1;
 
   //fixed v
+  ess_bdr_v[0] = 1;
   ess_bdr_v[1] = 1;
   ess_bdr_v[2] = 1;
   //================================================
@@ -314,27 +317,38 @@ void DarcyEMProblem::SetFieldBCs(){
 
   //Set the J-Field BCs by looping over the
   //active boundaries
+  cout << setw(10) << "RT elements: " << setw(10) << ess_tdof_J.Size() << "\n";
   for(int I=0; I<nJ_tags; I++){
 	int K = ess_bdr_J[I];
     if(K == 1){ //Checks if boundary is active
-      Array<int> ess_tdof;
-      fespaceRT->GetEssentialVDofs( *(essential_tdof_list[0]), ess_tdof, I);
-      cout << ess_tdof.Size() << "\n";
-	  x_vec.GetBlock(0).SetSubVector( ess_tdof, DirchVal[0][I] );
-	  b_vec.GetBlock(0).SetSubVector( ess_tdof, DirchVal[0][I] );
+      Array<int> ess_tdof, ess_bdr_tmp(nJ_tags);
+      ess_bdr_tmp = 0;
+      ess_bdr_tmp[I] = 1;
+      fespaceRT->GetEssentialTrueDofs(ess_bdr_tmp, ess_tdof);
+      cout << setw(10) << I << setw(10) << ess_tdof.Size() << "\n";
+      x_vec.GetBlock(0).SetSubVector( ess_tdof, DirchVal[0][I] );
+      b_vec.GetBlock(0).SetSubVector( ess_tdof, DirchVal[0][I] );
+      tx_vec.GetBlock(0).SetSubVector( ess_tdof, DirchVal[0][I] );
+      tb_vec.GetBlock(0).SetSubVector( ess_tdof, DirchVal[0][I] );
     }
   }
 
+
   //Set the J-Field BCs by looping over the
   //active boundaries
+  cout << setw(10) << "H1 elements: " << setw(10) << ess_tdof_v.Size() << "\n";
   for(int I=0; I<nv_tags; I++){
 	int K = ess_bdr_v[I];
     if(K == 1){ //Checks if boundary is active
-      Array<int> ess_tdof;
-      fespaceL->GetEssentialVDofs( *(essential_tdof_list[1]), ess_tdof, I);
-      cout << ess_tdof.Size() << "\n";
-	  x_vec.GetBlock(1).SetSubVector( ess_tdof, DirchVal[1][I] );
-	  b_vec.GetBlock(1).SetSubVector( ess_tdof, DirchVal[1][I] );
+      Array<int> ess_tdof, ess_bdr_tmp(nv_tags);
+      ess_bdr_tmp = 0;
+      ess_bdr_tmp[I] = 1;
+      fespaceL->GetEssentialTrueDofs(ess_bdr_tmp, ess_tdof);
+      cout << setw(10) << I << setw(10) << ess_tdof.Size() << "\n";
+      x_vec.GetBlock(1).SetSubVector( ess_tdof, DirchVal[1][I] );
+      b_vec.GetBlock(1).SetSubVector( ess_tdof, DirchVal[1][I] );
+      tx_vec.GetBlock(1).SetSubVector( ess_tdof, DirchVal[1][I] );
+      tb_vec.GetBlock(1).SetSubVector( ess_tdof, DirchVal[1][I] );
     }
   }
 };
@@ -354,8 +368,8 @@ void DarcyEMProblem::BuildPreconditioner()
 
    Vector BMBt_diag(fespaceL->GetTrueVSize());
    JVForm->AssembleDiagonal_ADAt(invMd, BMBt_diag);
-   invM = new OperatorJacobiSmoother(Md_PA, *(essential_tdof_list[0]));
-   invS = new OperatorJacobiSmoother(BMBt_diag, *(essential_tdof_list[1]));
+   invM = new OperatorJacobiSmoother(Md_PA, ess_tdof_J);
+   invS = new OperatorJacobiSmoother(BMBt_diag, ess_tdof_v);
 
    invM->iterative_mode = false;
    invS->iterative_mode = false;
@@ -367,7 +381,7 @@ void DarcyEMProblem::BuildPreconditioner()
 //Sets the linear/non-linear solver
 //for the Darcy problem
 void DarcyEMProblem::Set_Solver( bool verbosity){
-   int maxIter(10);
+   int maxIter(100);
    real_t rtol(1.e-6);
    real_t atol(1.e-10);
    solver = new MINRESSolver(MPI_COMM_WORLD);

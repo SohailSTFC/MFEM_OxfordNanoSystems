@@ -55,7 +55,7 @@ int main(int argc, char *argv[])
 //   const char *mesh_file = "mesh/star.mesh";
    const char *mesh_file = "mesh/OxNanoSys0.mesh";
    int ref_levels = -1;
-   int order = 1;
+   int order = 2;
    bool par_format = false;
    bool pa = false;
    const char *device_config = "cpu";
@@ -133,14 +133,15 @@ int main(int argc, char *argv[])
    //    parallel mesh is defined, the serial mesh can be deleted.
    ParMesh *pmesh = new ParMesh(MPI_COMM_WORLD, *mesh);
    delete mesh;
-  /* {
+/*
+   {
       int par_ref_levels = 2;
       for (int l = 0; l < par_ref_levels; l++)
       {
          pmesh->UniformRefinement();
       }
-   }*/
-
+   }
+*/
    // 7. Define a parallel finite element space on the parallel mesh. Here we
    //    use the Raviart-Thomas finite elements of the specified order.
    FiniteElementCollection *hdiv_coll(new RT_FECollection(order+1, dim));
@@ -163,6 +164,7 @@ int main(int argc, char *argv[])
 
    //Visualise the results using ParaView
    double time = 0.0;
+   demoProb.SetFields();
    ParaViewVisualise(demoProb.Fields, demoProb.FieldNames, order, pmesh, time);
 
    // 20. Free the used memory.

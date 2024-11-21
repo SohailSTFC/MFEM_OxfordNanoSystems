@@ -65,10 +65,10 @@ class DarcyEMProblem
     Solver *invM=NULL, *invS=NULL;
 
     //Boundary Conditions
-    Array<Array<int> *>    essential_bdr;       //Dirchelet(essential) BCs tags
-    vector<vector<double>> DirchVal;            //Dirchelet value of BC
-    Array<int> ess_tdof_J, ess_tdof_v;
-
+    vector<vector<double>> DirchVal;       //Dirchelet value of BC
+    Array<int> ess_tdof_J, ess_tdof_v;     //Dirchelet BC DOF's
+    Array<int> ess_bdr_J, ess_bdr_v;       //Dirchelet BC Tag's
+  
     //Read in and set the Boundary conditions
     void SetBCsArrays();
 
@@ -161,8 +161,6 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
   tx_vec.Update (block_trueOffsets, deviceMT);
   tb_vec.Update (block_trueOffsets, deviceMT);
 
-  //Set the Fields (Gridfunctions) for solution
-  SetFields();
 
   // 9. Define the coefficients, analytical solution, and rhs of the PDE.
   // the coefficients and functions
@@ -212,7 +210,7 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
   JJForm->Assemble();
 
   JVForm->AddDomainIntegrator(new VectorFEDivergenceIntegrator);
-  JVForm->Assemble();;
+  JVForm->Assemble();
 
   VJForm->AddDomainIntegrator(new VectorFEDivergenceIntegrator);
   VJForm->Assemble();
@@ -221,8 +219,8 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
 
   //Set the BCs and finalize the bilinear forms
   JJForm->FormSystemMatrix( ess_tdof_J, opM);
-  JVForm->FormRectangularSystemMatrix( ess_tdof_J, ess_tdof_empty, opB);
-  VJForm->FormRectangularSystemMatrix( ess_tdof_empty, ess_tdof_v, opC);
+  VJForm->FormRectangularSystemMatrix( ess_tdof_J, ess_tdof_empty, opB);
+  JVForm->FormRectangularSystemMatrix( ess_tdof_empty, ess_tdof_v, opC);
   Bt = new TransposeOperator(opB.Ptr());
   VVForm->FormSystemMatrix( ess_tdof_v, opD);
 
@@ -237,12 +235,9 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
 //Sets the natural and essential boundary
 //conditions
 void DarcyEMProblem::SetBCsArrays(){
-  //Set the tmp pointer arrays
-  Array<Array<int> *> essential_bdr_tmp(2); //Dirchelet (essential) BCs tags
-
   //Essential boundary condition tags
-  Array<int> ess_bdr_J(fespaceRT->GetMesh()->bdr_attributes.Max());
-  Array<int> ess_bdr_v(fespaceL->GetMesh()->bdr_attributes.Max());
+  ess_bdr_J = Array<int>(fespaceRT->GetMesh()->bdr_attributes.Max());
+  ess_bdr_v = Array<int>(fespaceL->GetMesh()->bdr_attributes.Max());
 
   //initialise the arrays
   ess_bdr_J = 0;
@@ -252,17 +247,13 @@ void DarcyEMProblem::SetBCsArrays(){
   ess_bdr_J[3] = 1;
 
   //fixed v
+  ess_bdr_v[0] = 1;
   ess_bdr_v[1] = 1;
   ess_bdr_v[2] = 1;
 
-  //Set the BC-tag pointers
-  essential_bdr_tmp[0] = &ess_bdr_J;
-  essential_bdr_tmp[1] = &ess_bdr_v;
-  essential_bdr = Array<Array<int> *>(essential_bdr_tmp);
-
   //Find the True Dofs
-  fespaceRT->GetEssentialTrueDofs(*essential_bdr[0], ess_tdof_J);
-  fespaceL->GetEssentialTrueDofs(*essential_bdr[1], ess_tdof_v);
+  fespaceRT->GetEssentialTrueDofs(ess_bdr_J, ess_tdof_J);
+  fespaceL->GetEssentialTrueDofs(ess_bdr_v, ess_tdof_v);
 
   cout << setw(10) << "RT elements: " << setw(10) << ess_tdof_J.Size() << "\n";
   cout << setw(10) << "H1 elements: " << setw(10) << ess_tdof_v.Size() << "\n";
@@ -294,26 +285,6 @@ void DarcyEMProblem::SetFieldBCs(){
   //the current field
   int nJ_tags = fespaceRT->GetMesh()->bdr_attributes.Max();
   int nv_tags = fespaceL->GetMesh()->bdr_attributes.Max();
-
-  //================================================
-  // Some wasteful code need to Redo TODO
-  //================================================
-  //Essential boundary condition tags
-  Array<int> ess_bdr_J(nJ_tags), ess_bdr_v(nv_tags);
-
-  //initialise the arrays
-  ess_bdr_J = 0;
-  ess_bdr_v = 0;
-
-  //fixed J
-  ess_bdr_J[3] = 1;
-
-  //fixed v
-  ess_bdr_v[0] = 1;
-  ess_bdr_v[1] = 1;
-  ess_bdr_v[2] = 1;
-  //================================================
-
 
   //Set the J-Field BCs by looping over the
   //active boundaries
@@ -381,14 +352,14 @@ void DarcyEMProblem::BuildPreconditioner()
 //Sets the linear/non-linear solver
 //for the Darcy problem
 void DarcyEMProblem::Set_Solver( bool verbosity){
-   int maxIter(100);
-   real_t rtol(1.e-6);
-   real_t atol(1.e-10);
-   solver = new MINRESSolver(MPI_COMM_WORLD);
-   solver->SetAbsTol(atol);
-   solver->SetRelTol(rtol);
-   solver->SetMaxIter(maxIter);
-   solver->SetPrintLevel(verbosity);
+  int maxIter(100);
+  real_t rtol(1.e-6);
+  real_t atol(1.e-10);
+  solver = new MINRESSolver(MPI_COMM_WORLD);
+  solver->SetAbsTol(atol);
+  solver->SetRelTol(rtol);
+  solver->SetMaxIter(maxIter);
+  solver->SetPrintLevel(verbosity);
   if(darcyEMOp != NULL) solver->SetOperator(*darcyEMOp);
   if(darcyEMPr != NULL) solver->SetPreconditioner(*darcyEMPr);
 };
@@ -400,20 +371,19 @@ void DarcyEMProblem::Solve(bool verbosity){
     StopWatch chrono;
     chrono.Clear();
     chrono.Start();
+    tb_vec = 0.0;
+    b_vec  = 0.0;
     tx_vec = 0.0;
+    x_vec  = 0.0;
     SetFieldBCs();
     solver->Mult(tb_vec, tx_vec);
     chrono.Stop();
 
     if (verbosity)
     {
-       if(solver->GetConverged())
-         std::cout << "MINRES converged in " << solver->GetNumIterations()
-                   << " iterations with a residual norm of " << solver->GetFinalNorm() << ".\n";
-       else
-         std::cout << "MINRES did not converge in " << solver->GetNumIterations()
-                   << " iterations. Residual norm is " << solver->GetFinalNorm() << ".\n";
-         std::cout << "MINRES solver took " << chrono.RealTime() << "s. \n";
+      std::cout << "MINRES ended in "                     << solver->GetNumIterations()
+                << " iterations with a residual norm of " << solver->GetFinalNorm() << ".\n";
+      std::cout << "MINRES solver took "                  << chrono.RealTime()      << "s. \n";
     }
   }else{
     if (verbosity) std::cout << "Error Darcy operator not built" << ".\n";

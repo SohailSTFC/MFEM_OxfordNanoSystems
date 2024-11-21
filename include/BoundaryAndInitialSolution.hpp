@@ -62,20 +62,12 @@ real_t gFun(const Vector & x)
    }
    else
    {
-      return 0;
+      return 0.0;
    }
 }
 
 real_t f_natural(const Vector & x)
 {
    return (-pFun_ex(x));
-}
-
-//
-// Boundary conditions
-//
-
-void current_dirichlet_bc(const Vector & x, Vector & u){
-  u = 0.00;	  
 }
 #endif

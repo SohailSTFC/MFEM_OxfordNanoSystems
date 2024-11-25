@@ -5,4 +5,4 @@
 #
 
 
-rm -r DarcyEM ParaView
+rm -r EMsampleProb ParaView

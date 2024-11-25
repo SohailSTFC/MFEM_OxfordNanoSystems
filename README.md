@@ -26,16 +26,21 @@ installing/getting this library is as follows:
 # Sample problem 0:
 A sample 2-D problem without any kind of shield around the plate to regularise the local field.
 The electrodes are set to 3.0v and the plate is set to 0.0v, the outer boundary has a no-flux
-boundary conditions ($\vec{n} \cdot \vec{J} = 0  $). The initial mesh for this problem can be
-seen bellow:
+boundary conditions ($\vec{n} \cdot \vec{J} = 0  $). This problem is the default problem and 
+will automatically run if no other command line options are specified.
+The initial mesh for this problem can be seen bellow:
 
 ![image](Imgs/Sample0Mesh.PNG)
 
-This problem is run using the following commmand options:
+This problem is run using the following commmand options if built with MPI:
+`mpirun -np 1 ./EMsampleProb`.
 
+or
+
+`mpirun -np 1 ./EMsampleProb --mesh mesh/OxNanoSys0.mesh`
 
 # Sample problem 1:
 This uses MFEM features for external meshes based off of the [MFEM tutorial](https://mfem.org/tutorial/meshvis/) , it has the additional dependency
 of using gmsh however this can be [cloned from gitlab](https://gitlab.onelab.info/gmsh/gmsh) and built for your system or downloaded as a [windows ready binary](https://gmsh.info/).
-Gmsh can read in most mesh formats and output them into the Gmsh format which is readable from MFEM, however in this Sample problem
+Gmsh can read in most mesh formats and output them into the Gmsh format which is readable from MFEM, however in this sample problem
 the Native geometry format is used and a mesh is generated from that.

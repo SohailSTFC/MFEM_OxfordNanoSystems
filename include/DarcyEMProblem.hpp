@@ -168,8 +168,6 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
   VectorFunctionCoefficient fcoeff(dim, fFun);
   FunctionCoefficient fnatcoeff(f_natural);
   FunctionCoefficient gcoeff(gFun);
-  VectorFunctionCoefficient ucoeff(dim, uFun_ex);
-  FunctionCoefficient pcoeff(pFun_ex);
 
   //
   //  The linear forms (The RHS/Residual forms)
@@ -286,6 +284,13 @@ void DarcyEMProblem::SetFieldBCs(){
   int nJ_tags = fespaceRT->GetMesh()->bdr_attributes.Max();
   int nv_tags = fespaceL->GetMesh()->bdr_attributes.Max();
 
+  tb_vec = 0.0;
+  b_vec  = 0.0;
+  tx_vec = 0.0;
+  x_vec  = 0.0;
+  x_vec.GetBlock(1) = 0.2;
+  tx_vec.GetBlock(1) = 0.2;
+
   //Set the J-Field BCs by looping over the
   //active boundaries
   cout << setw(10) << "RT elements: " << setw(10) << ess_tdof_J.Size() << "\n";
@@ -303,7 +308,6 @@ void DarcyEMProblem::SetFieldBCs(){
       tb_vec.GetBlock(0).SetSubVector( ess_tdof, DirchVal[0][I] );
     }
   }
-
 
   //Set the J-Field BCs by looping over the
   //active boundaries
@@ -352,7 +356,7 @@ void DarcyEMProblem::BuildPreconditioner()
 //Sets the linear/non-linear solver
 //for the Darcy problem
 void DarcyEMProblem::Set_Solver( bool verbosity){
-  int maxIter(100);
+  int maxIter(1000);
   real_t rtol(1.e-6);
   real_t atol(1.e-10);
   solver = new MINRESSolver(MPI_COMM_WORLD);
@@ -371,10 +375,6 @@ void DarcyEMProblem::Solve(bool verbosity){
     StopWatch chrono;
     chrono.Clear();
     chrono.Start();
-    tb_vec = 0.0;
-    b_vec  = 0.0;
-    tx_vec = 0.0;
-    x_vec  = 0.0;
     SetFieldBCs();
     solver->Mult(tb_vec, tx_vec);
     chrono.Stop();

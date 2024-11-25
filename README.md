@@ -11,3 +11,9 @@ H1 spaces.
 
 This application is dependant on MFEM, METIS/PARMETIS, HYPRE, MPI (OpenMPI was used) and a 
 C-compiler (GCC was used) however these are straight forward to install.
+
+# Sample problem 1:
+A sample 2-D problem without any kind of shield around the plate to regularise the local field.
+The electrodes are set to 3.0v and the plate is set to 0.0v, the outer boundary has a no-flux
+boundary conditions ($\vec{n} \cdot \vec{J} \equiv 0.0  $)
+

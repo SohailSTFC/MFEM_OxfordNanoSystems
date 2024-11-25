@@ -18,6 +18,6 @@ The electrodes are set to 3.0v and the plate is set to 0.0v, the outer boundary 
 boundary conditions ($\vec{n} \cdot \vec{J} = 0  $). The initial mesh fo this problem can be
 seen bellow:
 
-![alt text](Img/Sample0Mesh.PNG)
+![image](Imgs/Sample0Mesh.PNG)
 
 This problem is run using the following commmand options:

@@ -36,4 +36,6 @@ This problem is run using the following commmand options:
 
 # Sample problem 1:
 This uses MFEM features for external meshes based off of the [MFEM tutorial](https://mfem.org/tutorial/meshvis/) , it has the additional dependency
-of using gmsh however this can be [cloned from gitlab](https://gitlab.onelab.info/gmsh/gmsh) and built for your system or downloaded as a [windows ready binary](https://gmsh.info/)
+of using gmsh however this can be [cloned from gitlab](https://gitlab.onelab.info/gmsh/gmsh) and built for your system or downloaded as a [windows ready binary](https://gmsh.info/).
+Gmsh can read in most mesh formats and output them into the Gmsh format which is readable from MFEM, however in this Sample problem
+the Native geometry format is used and a mesh is generated from that.

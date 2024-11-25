@@ -49,7 +49,7 @@ class PoissonEMProblem
 
     //The Block hypre matrices and Transposes for Jacobian
     TransposeOperator *Bt = NULL;
-    OperatorPtr opM, opB, opC, opD;
+    OperatorPtr opM;
     Vector Md_PA;
 
     //Shared pointer to the solver
@@ -176,7 +176,6 @@ PoissonEMProblem::PoissonEMProblem(ParFiniteElementSpace *f1L, real_t sig, Memor
 
   //The Bilinear block forms
   VVForm = new ParBilinearForm(fespaceL);
-
   VVForm->Assemble();
 
   //Set the BCs and finalize the bilinear forms
@@ -185,24 +184,18 @@ PoissonEMProblem::PoissonEMProblem(ParFiniteElementSpace *f1L, real_t sig, Memor
   //Set the block matrix operator
   darcyEMOp = new BlockOperator(block_trueOffsets);
   darcyEMOp->SetBlock(0,0, opM.Ptr());
-  darcyEMOp->SetBlock(0,1, Bt, -1.0);
-  darcyEMOp->SetBlock(1,0, opC.Ptr(), -1.0);
-  darcyEMOp->SetBlock(1,1, opD.Ptr());
 };
 
 //Sets the natural and essential boundary
 //conditions
+//This is configurable by the user to 
+//produce the kind of  BC's you want
 void PoissonEMProblem::SetBCsArrays(){
   //Essential boundary condition tags
-  ess_bdr_J = Array<int>(fespaceRT->GetMesh()->bdr_attributes.Max());
   ess_bdr_v = Array<int>(fespaceL->GetMesh()->bdr_attributes.Max());
 
   //initialise the arrays
-  ess_bdr_J = 0;
   ess_bdr_v = 0;
-
-  //fixed J
-  ess_bdr_J[3] = 1;
 
   //fixed v
   ess_bdr_v[0] = 1;
@@ -210,23 +203,13 @@ void PoissonEMProblem::SetBCsArrays(){
   ess_bdr_v[2] = 1;
 
   //Find the True Dofs
-  fespaceRT->GetEssentialTrueDofs(ess_bdr_J, ess_tdof_J);
   fespaceL->GetEssentialTrueDofs(ess_bdr_v, ess_tdof_v);
-
-  cout << setw(10) << "RT elements: " << setw(10) << ess_tdof_J.Size() << "\n";
   cout << setw(10) << "H1 elements: " << setw(10) << ess_tdof_v.Size() << "\n";
 
   //The Dirchelet BC values
   vector<double> DirchVal_tmp;
   DirchVal.clear();
   DirchVal_tmp.clear();
-  
-  //J-Field BC-values
-  DirchVal_tmp.push_back(0.00); // N/A
-  DirchVal_tmp.push_back(0.00); // N/A
-  DirchVal_tmp.push_back(0.00); // N/A
-  DirchVal_tmp.push_back(0.00); // n.J = 0
-  DirchVal.push_back(DirchVal_tmp);
 
   //v-Field BC-values
   DirchVal_tmp[0] = 0.00; // Fixed v = c
@@ -241,7 +224,6 @@ void PoissonEMProblem::SetBCsArrays(){
 void PoissonEMProblem::SetFieldBCs(){
   //Set the boundary Solution function for
   //the current field
-  int nJ_tags = fespaceRT->GetMesh()->bdr_attributes.Max();
   int nv_tags = fespaceL->GetMesh()->bdr_attributes.Max();
 
   tb_vec = 0.0;
@@ -251,25 +233,7 @@ void PoissonEMProblem::SetFieldBCs(){
   x_vec.GetBlock(1) = 0.2;
   tx_vec.GetBlock(1) = 0.2;
 
-  //Set the J-Field BCs by looping over the
-  //active boundaries
-  cout << setw(10) << "RT elements: " << setw(10) << ess_tdof_J.Size() << "\n";
-  for(int I=0; I<nJ_tags; I++){
-	int K = ess_bdr_J[I];
-    if(K == 1){ //Checks if boundary is active
-      Array<int> ess_tdof, ess_bdr_tmp(nJ_tags);
-      ess_bdr_tmp = 0;
-      ess_bdr_tmp[I] = 1;
-      fespaceRT->GetEssentialTrueDofs(ess_bdr_tmp, ess_tdof);
-      cout << setw(10) << I << setw(10) << ess_tdof.Size() << "\n";
-      x_vec.GetBlock(0).SetSubVector( ess_tdof, DirchVal[0][I] );
-      b_vec.GetBlock(0).SetSubVector( ess_tdof, DirchVal[0][I] );
-      tx_vec.GetBlock(0).SetSubVector( ess_tdof, DirchVal[0][I] );
-      tb_vec.GetBlock(0).SetSubVector( ess_tdof, DirchVal[0][I] );
-    }
-  }
-
-  //Set the J-Field BCs by looping over the
+  //Set the V-Field BCs by looping over the
   //active boundaries
   cout << setw(10) << "H1 elements: " << setw(10) << ess_tdof_v.Size() << "\n";
   for(int I=0; I<nv_tags; I++){
@@ -280,12 +244,13 @@ void PoissonEMProblem::SetFieldBCs(){
       ess_bdr_tmp[I] = 1;
       fespaceL->GetEssentialTrueDofs(ess_bdr_tmp, ess_tdof);
       cout << setw(10) << I << setw(10) << ess_tdof.Size() << "\n";
-      x_vec.GetBlock(1).SetSubVector( ess_tdof, DirchVal[1][I] );
-      b_vec.GetBlock(1).SetSubVector( ess_tdof, DirchVal[1][I] );
-      tx_vec.GetBlock(1).SetSubVector( ess_tdof, DirchVal[1][I] );
-      tb_vec.GetBlock(1).SetSubVector( ess_tdof, DirchVal[1][I] );
+      x_vec.GetBlock(0).SetSubVector( ess_tdof, DirchVal[0][I] );
+      b_vec.GetBlock(0).SetSubVector( ess_tdof, DirchVal[0][I] );
+      tx_vec.GetBlock(0).SetSubVector( ess_tdof, DirchVal[0][I] );
+      tb_vec.GetBlock(0).SetSubVector( ess_tdof, DirchVal[0][I] );
     }
   }
+
 };
 
 

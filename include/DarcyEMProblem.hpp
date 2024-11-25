@@ -412,5 +412,7 @@ DarcyEMProblem::~DarcyEMProblem(){
    if(darcyEMPr != NULL) delete darcyEMPr;
    if(JJForm    != NULL) delete JJForm;
    if(JVForm    != NULL) delete JVForm;
+   if(VJForm    != NULL) delete VJForm;
+   if(VVForm    != NULL) delete VVForm;
 };
 #endif

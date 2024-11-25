@@ -32,7 +32,9 @@ The initial mesh for this problem can be seen bellow:
 
 ![image](Imgs/Sample0Mesh.PNG)
 
-This problem is run using the following commmand options if built with MPI:
+This problem is run using the following commmand options if built with MPI 
+(the number of processes can be increased to reflect the number of available 
+cores however by default its set to 1):
 
 `mpirun -np 1 ./EMsampleProb`.
 

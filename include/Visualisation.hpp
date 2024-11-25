@@ -23,4 +23,20 @@ void ParaViewVisualise(std::vector<ParGridFunction*> Fields
   paraview_dc.Save();
 };
 
+void AdiosVisualise(std::vector<ParGridFunction*> Fields
+                  , std::vector<std::string>      FieldNames
+                  , int order, ParMesh *pmesh, double time){
+  std::string postfix(mesh_file);
+  postfix.erase(0, std::string("../data/").size() );
+  postfix += "_o" + std::to_string(order);
+  const std::string collection_name = "ex5-p_" + postfix + ".bp";
+
+  ADIOS2DataCollection adios2_dc(MPI_COMM_WORLD, collection_name, pmesh);
+  adios2_dc.SetLevelsOfDetail(order);
+  adios2_dc.SetCycle(1);
+  adios2_dc.SetTime(time);
+  for(int I=0; I< FieldNames.size(); I++) adios2_dc.RegisterField(FieldNames[I],Fields[I]);
+  adios2_dc.Save();
+};
+
 #endif

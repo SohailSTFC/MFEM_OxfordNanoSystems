@@ -13,7 +13,7 @@ This application is dependant on MFEM, METIS/PARMETIS, HYPRE, MPI (OpenMPI was u
 C-compiler (GCC was used) however these are straight forward to install. The process of 
 installing/getting this library is as follows:
 
-1) install MFEM using your [preferred installation method](https://mfem.org/building/)
+1) Install MFEM using your [preferred installation method](https://mfem.org/building/)
 
 2) Clone this repository alongside MFEM
   `git clone https://github.com/SohailSTFC/MFEM_OxfordNanoSystems.git`

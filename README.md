@@ -42,11 +42,8 @@ or
 
 `mpirun -np 1 ./EMsampleProb --mesh mesh/OxNanoSys0.mesh`
 
-A sample potential field is given by:
-![image1](Imgs/Sample0Potential.PNG)
-
-A current magnitude probe across the plate is given :
-![image1](Imgs/Sample0CurrentMagPlot.png)
+Figures of a sample potential field (left) and a probe of thecurrent magnitude across the plate (right) is given by :
+![image0](Imgs/Sample0Potential.PNG)  |  ![image1](Imgs/Sample0CurrentMagPlot.png)
 
 # Sample problem 1:
 This uses MFEM features for external meshes based off of the [MFEM tutorial](https://mfem.org/tutorial/meshvis/) , it has the additional dependency

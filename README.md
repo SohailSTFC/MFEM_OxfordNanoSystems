@@ -42,7 +42,7 @@ or
 
 `mpirun -np 1 ./EMsampleProb --mesh mesh/OxNanoSys0.mesh`
 
-Figures of a sample potential field (left) and a probe of thecurrent magnitude across the plate (right) is given by :
+Figures of a sample potential field (top) and a probe of thecurrent magnitude across the plate (bottom) is given by :
 ![image0](Imgs/Sample0Potential.PNG)  |  ![image1](Imgs/Sample0CurrentMagPlot.png)
 
 # Sample problem 1:

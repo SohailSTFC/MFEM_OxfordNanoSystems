@@ -30,7 +30,7 @@ boundary conditions ($\vec{n} \cdot \vec{J} = 0  $). This problem is the default
 will automatically run if no other command line options are specified.
 The initial mesh for this problem can be seen bellow:
 
-![image](Imgs/Sample0Mesh.PNG)
+![image0](Imgs/Sample0Mesh.PNG)
 
 This problem is run using the following commmand options if built with MPI 
 (the number of processes can be increased to reflect the number of available 
@@ -41,6 +41,12 @@ cores however by default its set to 1):
 or
 
 `mpirun -np 1 ./EMsampleProb --mesh mesh/OxNanoSys0.mesh`
+
+A sample potential field is given by:
+![image1](Imgs/Sample0Potential.PNG)
+
+A current magnitude probe across the plate is given :
+![image1](Imgs/Sample0CurrentMagPlot.png)
 
 # Sample problem 1:
 This uses MFEM features for external meshes based off of the [MFEM tutorial](https://mfem.org/tutorial/meshvis/) , it has the additional dependency

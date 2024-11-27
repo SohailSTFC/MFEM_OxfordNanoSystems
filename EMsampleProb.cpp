@@ -144,7 +144,7 @@ int main(int argc, char *argv[])
 
    // 7. Define a parallel finite element space on the parallel mesh. Here we
    //    use the Raviart-Thomas finite elements of the specified order.
-   FiniteElementCollection *hdiv_coll(new RT_FECollection(order+1, dim));
+   FiniteElementCollection *hdiv_coll(new RT_FECollection(order, dim));
    FiniteElementCollection *l2_coll(new H1_FECollection(order));
 
    ParFiniteElementSpace *R_space = new ParFiniteElementSpace(pmesh, hdiv_coll);
@@ -156,7 +156,7 @@ int main(int argc, char *argv[])
    DarcyEMProblem demoProb(R_space, W_space, sig, mt, dim);
 	
    //Set the solver and preconditioner
-   //demoProb.BuildPreconditioner();
+   demoProb.BuildPreconditioner();
    demoProb.Set_Solver(verbose);
 
    //Solve the equations

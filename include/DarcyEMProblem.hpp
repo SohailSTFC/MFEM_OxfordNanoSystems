@@ -203,6 +203,12 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
   VJForm = new ParMixedBilinearForm(fespaceRT, fespaceL);
   VVForm = new ParBilinearForm(fespaceL);
 
+  //Set the assembly level
+  JJForm->SetAssemblyLevel(AssemblyLevel::PARTIAL);
+  JVForm->SetAssemblyLevel(AssemblyLevel::PARTIAL);
+  VJForm->SetAssemblyLevel(AssemblyLevel::PARTIAL);
+  VVForm->SetAssemblyLevel(AssemblyLevel::PARTIAL);
+
   //Set the integrators/integral forms and assemble the block matrices/bilinear forms
   JJForm->AddDomainIntegrator(new VectorFEMassIntegrator(k));
   JJForm->Assemble();
@@ -342,7 +348,8 @@ void DarcyEMProblem::BuildPreconditioner()
    for (int i=0; i<Md_PA.Size(); ++i) invMd(i) = 1.0 / Md_host[i];
 
    Vector BMBt_diag(fespaceL->GetTrueVSize());
-   JVForm->AssembleDiagonal_ADAt(invMd, BMBt_diag);
+   BMBt_diag = 1.0;
+   VJForm->AssembleDiagonal_ADAt(invMd, BMBt_diag);
    invM = new OperatorJacobiSmoother(Md_PA, ess_tdof_J);
    invS = new OperatorJacobiSmoother(BMBt_diag, ess_tdof_v);
 
@@ -356,7 +363,7 @@ void DarcyEMProblem::BuildPreconditioner()
 //Sets the linear/non-linear solver
 //for the Darcy problem
 void DarcyEMProblem::Set_Solver( bool verbosity){
-  int maxIter(1000);
+  int maxIter(250);
   real_t rtol(1.e-6);
   real_t atol(1.e-10);
   solver = new MINRESSolver(MPI_COMM_WORLD);

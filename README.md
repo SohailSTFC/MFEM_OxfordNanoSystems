@@ -43,7 +43,11 @@ or
 `mpirun -np 1 ./EMsampleProb --mesh mesh/OxNanoSys0.mesh`
 
 Figures of a sample potential field (top) and a probe of thecurrent magnitude across the plate (bottom) is given by :
-![image0](Imgs/Sample0Potential.PNG)  |  ![image1](Imgs/Sample0CurrentMagPlot.png)
+![image1](Imgs/Sample0Potential.PNG)  |  ![image2](Imgs/Sample0CurrentMagPlot.png)
+
+By restricting the J-magnitude to 20 amps, it can be seen there are concentrations of currents at the corners
+of the plate/workpiece.
+![image3](Imgs/Sample0CurrentMagContour.PNG)
 
 # Sample problem 1:
 This uses MFEM features for external meshes based off of the [MFEM tutorial](https://mfem.org/tutorial/meshvis/) , it has the additional dependency

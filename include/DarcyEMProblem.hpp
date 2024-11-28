@@ -363,7 +363,7 @@ void DarcyEMProblem::BuildPreconditioner()
 //Sets the linear/non-linear solver
 //for the Darcy problem
 void DarcyEMProblem::Set_Solver( bool verbosity){
-  int maxIter(250);
+  int maxIter(500);
   real_t rtol(1.e-6);
   real_t atol(1.e-10);
   solver = new MINRESSolver(MPI_COMM_WORLD);

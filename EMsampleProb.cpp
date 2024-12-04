@@ -156,7 +156,7 @@ int main(int argc, char *argv[])
    DarcyEMProblem demoProb(R_space, W_space, sig, mt, dim);
 	
    //Set the solver and preconditioner
-//   demoProb.BuildPreconditioner();
+   demoProb.BuildPreconditioner();
    demoProb.Set_Solver(verbose);
 
    //Solve the equations

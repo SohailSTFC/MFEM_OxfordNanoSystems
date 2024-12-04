@@ -272,6 +272,7 @@ void DarcyEMProblem::SetBCsArrays(){
   DirchVal_tmp.push_back(0.00); // N/A
   DirchVal_tmp.push_back(0.00); // N/A
   DirchVal_tmp.push_back(0.00); // n.J = 0
+  DirchVal_tmp.push_back(0.00); // N/A
   DirchVal.push_back(DirchVal_tmp);
 
   //v-Field BC-values
@@ -279,6 +280,7 @@ void DarcyEMProblem::SetBCsArrays(){
   DirchVal_tmp[1] = 3.00; // Fixed v = c
   DirchVal_tmp[2] = 3.00; // Fixed v = c
   DirchVal_tmp[3] = 0.00; // N/A
+  DirchVal_tmp[4] = 0.00; // N/A
   DirchVal.push_back(DirchVal_tmp);
   DirchVal_tmp.clear();
 };

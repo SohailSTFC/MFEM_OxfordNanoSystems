@@ -24,8 +24,8 @@ class PoissonEMProblem
     ParFiniteElementSpace *fespaceL=NULL;  //Lagrange finite element space
 
     //Block Matrix structure offsets
-    Array<int> block_offsets;     // number of variables + 1 (2-variables J and v)
-    Array<int> block_trueOffsets; // number of variables + 1 (2-variables J and v)
+    Array<int> block_offsets;     // number of variables + 1 (1-variable v)
+    Array<int> block_trueOffsets; // number of variables + 1 (1-variables v)
 
     //The permiativity of space
     real_t sigma;
@@ -153,7 +153,6 @@ PoissonEMProblem::PoissonEMProblem(ParFiniteElementSpace *f1L, real_t sig, Memor
   ConstantCoefficient k(1.0);
   VectorFunctionCoefficient fcoeff(dim, fFun);
   FunctionCoefficient fnatcoeff(f_natural);
-  FunctionCoefficient gcoeff(gFun);
 
   //
   //  The linear forms (The RHS/Residual forms)

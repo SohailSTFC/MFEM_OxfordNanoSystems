@@ -1,32 +1,27 @@
-//                       MFEM Example 5 - Parallel Version
+//                       MFEM Electromagnetic Sample - Parallel Version
 //
-// Compile with: make ex5p
+// Compile with: make
 //
-// Sample runs:  mpirun -np 4 ex5p -m ../data/square-disc.mesh
-//               mpirun -np 4 ex5p -m ../data/star.mesh
-//               mpirun -np 4 ex5p -m ../data/beam-tet.mesh
-//               mpirun -np 4 ex5p -m ../data/beam-hex.mesh
-//               mpirun -np 4 ex5p -m ../data/escher.mesh
-//               mpirun -np 4 ex5p -m ../data/fichera.mesh
+// Sample runs:  mpirun -np 1 EMSampleProb -m mesh/OxNanoSys0.mesh
+//               mpirun -np 1 EMSampleProb -m mesh/OxNanoSys1.msh
 //
 //
 // Description:  This example code solves a simple 2D/3D mixed Darcy problem
 //               corresponding to the saddle point system
 //
-//                                 u + grad p = f
-//                                 - div u      = g
+//                                 J + grad v = f
+//                                 - div J    = g
 //
-//               with natural boundary condition -p = <given pressure>.
-//               Here, we use a given exact solution (u,p) and compute the
+//               with natural boundary condition -v = <given potenialt>.
+//               Here, we use a given exact solution (J,v) and compute the
 //               corresponding r.h.s. (f,g).  We discretize with Raviart-Thomas
-//               finite elements (velocity u) and piecewise discontinuous
-//               polynomials (pressure p).
+//               finite elements (Currect flux J) and piecewise discontinuous
+//               polynomials (potential v).
 //
 //               The example demonstrates the use of the BlockOperator class, as
-//               well as the collective saving of several grid functions in
-//               VisIt (visit.llnl.gov) and ParaView (paraview.org) formats.
-//               Optional saving with ADIOS2 (adios2.readthedocs.io) streams is
-//               also illustrated.
+//               well as the collective saving of several grid functions in the
+//               ParaView (paraview.org) format.
+//
 //
 
 #include "mfem.hpp"

@@ -13,14 +13,12 @@ th_anode=0.005;
 th_sampl=0.0005;
 S=0.1;
 
-
 Rectangle(1) = {0, 0, 0, L, L};                                         //Liquid Tank
 Rectangle(2) = {L/2-L_anode/2, L/2-th_anode/2+S, 0, L_anode, th_anode}; //Anode 1
 Rectangle(3) = {L/2-L_anode/2, L/2-th_anode/2-S, 0, L_anode, th_anode}; //Anode 2
 Rectangle(4) = {L/2-L_sampl/2, L/2+th_sampl/2,   0, L_sampl, th_sampl}; //Sample
 
 BooleanDifference(5) = { Surface{1}; Delete; }{ Surface{2,3,4}; Delete; };
-
 
 Recombine Surface {5};
 Extrude{0,0,L}{
@@ -35,6 +33,3 @@ Physical Surface(2) = {12, 13, 10, 11};
 Physical Surface(1) = {14, 16, 17, 15};
 
 Mesh.MshFileVersion = 2.2;
-Coherence;
-Mesh(3) ;
-

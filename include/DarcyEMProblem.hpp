@@ -292,6 +292,9 @@ void DarcyEMProblem::SetFieldBCs(){
   int nJ_tags = fespaceRT->GetMesh()->bdr_attributes.Max();
   int nv_tags = fespaceL->GetMesh()->bdr_attributes.Max();
 
+  cout << setw(10) << "RT element Tags: " << setw(10) << nJ_tags << "\n";
+  cout << setw(10) << "H1 element Tags: " << setw(10) << nv_tags << "\n";
+
   tb_vec = 0.0;
   b_vec  = 0.0;
   tx_vec = 0.0;
@@ -365,7 +368,7 @@ void DarcyEMProblem::BuildPreconditioner()
 //Sets the linear/non-linear solver
 //for the Darcy problem
 void DarcyEMProblem::Set_Solver( bool verbosity){
-  int maxIter(500);
+  int maxIter(10);
   real_t rtol(1.e-6);
   real_t atol(1.e-10);
   solver = new MINRESSolver(MPI_COMM_WORLD);

@@ -21,11 +21,13 @@ Rectangle(4) = {L/2-L_sampl/2, L/2+th_sampl/2,   0, L_sampl, th_sampl}; //Sample
 
 BooleanDifference(5) = { Surface{1}; Delete; }{ Surface{2,3,4}; Delete; };
 
+
 Recombine Surface {5};
 Extrude{0,0,L}{
   Surface{5}; Layers{{8},{1}}; Recombine;
 }
 
+Physical Volume(1)  = {1};
 Physical Surface(5) = {22, 5};
 Physical Surface(4) = {8, 9, 7, 6};
 Physical Surface(3) = {21, 20, 18, 19};
@@ -33,3 +35,6 @@ Physical Surface(2) = {12, 13, 10, 11};
 Physical Surface(1) = {14, 16, 17, 15};
 
 Mesh.MshFileVersion = 2.2;
+Coherence;
+Mesh(3) ;
+

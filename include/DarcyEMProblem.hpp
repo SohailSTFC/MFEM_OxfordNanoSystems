@@ -11,6 +11,58 @@ using namespace mfem;
 #include "BoundaryAndInitialSolution.hpp"
 //
 //
+//  Custom block preconditioner(s)
+//
+//
+class SchurrPrecon : public Operator
+{
+  private:
+    const Operator *L, *U, *D;
+    Solver *InvM;
+
+  public:
+    // This is a custom schurr complement 
+	// block preconditioner for a 2 x 2 
+    // block matrix that needs to be inverted
+
+    SchurrPrecon(const Operator *D_, const Operator *U_
+	           , const Operator *L_, const Vector M_)
+			: Operator(D_->Height(), D_->Width())
+    {
+      //  MFEM_VERIFY(M_->Height() == Ainv_->Height());
+      //  MFEM_VERIFY(M_->Width() == Ainv_->Width());
+		L = L_;
+		U = U_;
+		D = D_;
+        Array<int> ess_tdof_empty;
+        InvM = new OperatorJacobiSmoother(M_, ess_tdof_empty);
+    };
+
+
+    //y = P x = (D - L InvM U) x
+    void Mult(const Vector &x, Vector &y) const
+    { 
+	  Vector D_x       ( D->Height() );
+      Vector U_x       ( U->Height() );
+      Vector InvM_U_x  ( U->Height() );
+      Vector L_InvM_U_x( D->Height() );
+
+      D->Mult(x,D_x);
+      U->Mult(x,U_x);
+      InvM->Mult(U_x,InvM_U_x);
+      L->Mult(InvM_U_x,L_InvM_U_x);
+
+      y = 0.0;
+      y.Add( 1.00, D_x);
+      y.Add(-1.00, L_InvM_U_x);
+    };
+
+    void SetOperator(const Operator &op){D = &op;};
+};
+
+
+//
+//
 //  The problem class
 //
 //
@@ -29,7 +81,7 @@ class DarcyEMProblem
     Array<int> block_trueOffsets; // number of variables + 1 (2-variables J and v)
 
     //The permiativity of space
-    real_t sigma;
+    double sigma;
 
     //The Bilinear forms of the block components
     // (Jacobian) (Assuming a symmetric Saddle point problem)
@@ -50,19 +102,22 @@ class DarcyEMProblem
     BlockOperator               *darcyEMOp = NULL;
     BlockDiagonalPreconditioner *darcyEMPr = NULL;
 
+
     //The Block hypre matrices and Transposes for Jacobian
     TransposeOperator *Bt = NULL;
     OperatorPtr opM, opB, opC, opD;
+    Operator *SchurrComp=NULL;
     Vector Md_PA;
 
     //Shared pointer to the solver
-    IterativeSolver* solver=NULL;
+    FGMRESSolver* solver=NULL;
 
     //The Preconditioning objects
     HypreParMatrix *MinvBt = NULL;
     HypreParVector *Md = NULL;
     HypreParMatrix *S = NULL;
-    Solver *invM=NULL, *invS=NULL;
+    Solver *invM=NULL;
+	IterativeSolver *invS=NULL;
 
     //Boundary Conditions
     vector<vector<double>> DirchVal;       //Dirchelet value of BC
@@ -84,7 +139,7 @@ class DarcyEMProblem
 
 	//The constructor
     DarcyEMProblem(ParFiniteElementSpace *f1, ParFiniteElementSpace *f2
-	             , real_t sig, MemoryType deviceMT, int dim);
+	             , double sig, MemoryType deviceMT, int dim);
 
     //Build and set a Preconditioner for the solver
     void BuildPreconditioner();
@@ -103,7 +158,6 @@ class DarcyEMProblem
 };
 
 
-
 //
 //
 //  Implementation of the problem class
@@ -115,7 +169,7 @@ class DarcyEMProblem
 //residual+jacobian operators/Forms
 DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
                              , ParFiniteElementSpace *f2L
-                             , real_t sig, MemoryType deviceMT, int dim)
+                             , double sig, MemoryType deviceMT, int dim)
 : sigma(sig)
 {
   DIM = dim;
@@ -203,11 +257,14 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
   VJForm = new ParMixedBilinearForm(fespaceRT, fespaceL);
   VVForm = new ParBilinearForm(fespaceL);
 
+
   //Set the assembly level
-  JJForm->SetAssemblyLevel(AssemblyLevel::PARTIAL);
-  JVForm->SetAssemblyLevel(AssemblyLevel::PARTIAL);
-  VJForm->SetAssemblyLevel(AssemblyLevel::PARTIAL);
-  VVForm->SetAssemblyLevel(AssemblyLevel::PARTIAL);
+/*  AssemblyLevel assembly_level = AssemblyLevel::PARTIAL;
+  JJForm->SetAssemblyLevel(assembly_level);
+  JVForm->SetAssemblyLevel(assembly_level);
+  VJForm->SetAssemblyLevel(assembly_level);
+  VVForm->SetAssemblyLevel(assembly_level);*/
+
 
   //Set the integrators/integral forms and assemble the block matrices/bilinear forms
   JJForm->AddDomainIntegrator(new VectorFEMassIntegrator(k));
@@ -342,6 +399,7 @@ void DarcyEMProblem::SetFieldBCs(){
 
 //Builds a preconditioner needed to
 //accelerate the Darcy problem solver (Optional)
+
 void DarcyEMProblem::BuildPreconditioner()
 {
    //Construct the a Schurr Complement
@@ -350,37 +408,43 @@ void DarcyEMProblem::BuildPreconditioner()
    JJForm->AssembleDiagonal(Md_PA);
    auto Md_host = Md_PA.HostRead();
    Vector invMd(Md_PA.Size());
-   for (int i=0; i<Md_PA.Size(); ++i) invMd(i) = 1.0 / Md_host[i];
+   for (int i=0; i<Md_PA.Size(); ++i) invMd(i) = 1.0/Md_host[i];
 
-   Vector BMBt_diag(fespaceL->GetTrueVSize());
-   BMBt_diag = 1.0;
-   VJForm->AssembleDiagonal_ADAt(invMd, BMBt_diag);
-   invM = new OperatorJacobiSmoother(Md_PA, ess_tdof_J);
-   invS = new OperatorJacobiSmoother(BMBt_diag, ess_tdof_v);
-
+   Array<int> ess_tdof_empty;
+   invM = new OperatorJacobiSmoother(invMd, ess_tdof_empty);
    invM->iterative_mode = false;
+
+   SchurrComp = new SchurrPrecon(opD.Ptr(), Bt, opC.Ptr(), invMd);
+   invS = new MINRESSolver(MPI_COMM_WORLD);
+   invS->SetOperator(*SchurrComp);
+   invS->SetAbsTol(1.0e-12);
+   invS->SetRelTol(1.0e-07);
+   invS->SetMaxIter(25);
+//   invS->SetPrintLevel(1);
    invS->iterative_mode = false;
+
    darcyEMPr = new BlockDiagonalPreconditioner(block_trueOffsets);
-   darcyEMPr->SetDiagonalBlock(0, invM);
-   darcyEMPr->SetDiagonalBlock(1, invS);
+   darcyEMPr->SetDiagonalBlock(0,invM);
+   darcyEMPr->SetDiagonalBlock(1,invS);
 }
 
 //Sets the linear/non-linear solver
 //for the Darcy problem
-void DarcyEMProblem::Set_Solver( bool verbosity){
-  int maxIter(10);
-  real_t rtol(1.e-6);
-  real_t atol(1.e-10);
-  solver = new MINRESSolver(MPI_COMM_WORLD);
+void DarcyEMProblem::Set_Solver(bool verbosity){
+  int maxIter(500);
+  double rtol(1.e-6);
+  double atol(1.e-10);
+  solver = new FGMRESSolver(MPI_COMM_WORLD);
   solver->SetAbsTol(atol);
   solver->SetRelTol(rtol);
+  solver->SetKDim(100);
   solver->SetMaxIter(maxIter);
   solver->SetPrintLevel(verbosity);
   if(darcyEMOp != NULL) solver->SetOperator(*darcyEMOp);
   if(darcyEMPr != NULL) solver->SetPreconditioner(*darcyEMPr);
 };
 
-//Solves the system of equations
+ //Solves the system of equations
 //for the Darcy problem
 void DarcyEMProblem::Solve(bool verbosity){
   if(darcyEMOp != NULL){
@@ -390,12 +454,11 @@ void DarcyEMProblem::Solve(bool verbosity){
     SetFieldBCs();
     solver->Mult(tb_vec, tx_vec);
     chrono.Stop();
-
     if (verbosity)
     {
-      std::cout << "MINRES ended in "                     << solver->GetNumIterations()
+      std::cout << "GMRES ended in "                      << solver->GetNumIterations()
                 << " iterations with a residual norm of " << solver->GetFinalNorm() << ".\n";
-      std::cout << "MINRES solver took "                  << chrono.RealTime()      << "s. \n";
+      std::cout << "GMRES solver took "                   << chrono.RealTime()      << "s. \n";
     }
   }else{
     if (verbosity) std::cout << "Error Darcy operator not built" << ".\n";

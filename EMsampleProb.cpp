@@ -50,10 +50,10 @@ int main(int argc, char *argv[])
 //   const char *mesh_file = "mesh/star.mesh";
    const char *mesh_file = "mesh/OxNanoSys0.mesh";
    int ref_levels = -1;
-   int order = 2;
+   int order = 1;
    bool par_format = false;
    bool pa = false;
-   const char *device_config = "cpu";
+   const char *device_config = "ceed-cpu"; //"cpu";//"ceed-cpu";
    bool visualization = 1;
    bool adios2 = false;
 
@@ -111,7 +111,7 @@ int main(int argc, char *argv[])
    //    this example we do 'ref_levels' of uniform refinement. We choose
    //    'ref_levels' to be the largest number that gives a final mesh with no
    //    more than 10,000 elements, unless the user specifies it as input.
-/*   {
+  /* {
       if (ref_levels == -1)
       {
          ref_levels = (int)floor(log(10000./mesh->GetNE())/log(2.)/dim);
@@ -128,14 +128,13 @@ int main(int argc, char *argv[])
    //    parallel mesh is defined, the serial mesh can be deleted.
    ParMesh *pmesh = new ParMesh(MPI_COMM_WORLD, *mesh);
    delete mesh;
-
- /*  {
-      int par_ref_levels = 2;
+   {
+      int par_ref_levels = 1;
       for (int l = 0; l < par_ref_levels; l++)
       {
          pmesh->UniformRefinement();
       }
-   }*/
+   }
 
    // 7. Define a parallel finite element space on the parallel mesh. Here we
    //    use the Raviart-Thomas finite elements of the specified order.
@@ -146,10 +145,10 @@ int main(int argc, char *argv[])
    ParFiniteElementSpace *W_space = new ParFiniteElementSpace(pmesh, l2_coll);
 
    //Set up the problem
-   real_t sig = 1.0;
+   double sig = 1.0;
    MemoryType mt = device.GetMemoryType();
    DarcyEMProblem demoProb(R_space, W_space, sig, mt, dim);
-	
+    
    //Set the solver and preconditioner
    demoProb.BuildPreconditioner();
    demoProb.Set_Solver(verbose);

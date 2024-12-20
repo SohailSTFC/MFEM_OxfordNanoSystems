@@ -9,18 +9,18 @@ using namespace std;
 using namespace mfem;
 
 // Define the analytical solution and forcing terms / boundary conditions
-real_t pFun_ex(const Vector & x);
+double pFun_ex(const Vector & x);
 void fFun(const Vector & x, Vector & f);
-real_t gFun(const Vector & x);
-real_t f_natural(const Vector & x);
+double gFun(const Vector & x);
+double f_natural(const Vector & x);
 
 
 // Change if needed
-real_t pFun_ex(const Vector & x)
+double pFun_ex(const Vector & x)
 {
-   real_t xi(x(0));
-   real_t yi(x(1));
-   real_t zi(0.0);
+   double xi(x(0));
+   double yi(x(1));
+   double zi(0.0);
 
    if (x.Size() == 3)
    {
@@ -35,7 +35,7 @@ void fFun(const Vector & x, Vector & f)
    f = 0.0;
 }
 
-real_t gFun(const Vector & x)
+double gFun(const Vector & x)
 {
    if (x.Size() == 3)
    {
@@ -47,7 +47,7 @@ real_t gFun(const Vector & x)
    }
 }
 
-real_t f_natural(const Vector & x)
+double f_natural(const Vector & x)
 {
    return (-pFun_ex(x));
 }

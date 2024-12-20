@@ -54,5 +54,5 @@ This uses MFEM features for external meshes based off of the [MFEM tutorial](htt
 of using gmsh however this can be [cloned from gitlab](https://gitlab.onelab.info/gmsh/gmsh) and built for your system or downloaded as a [windows ready binary](https://gmsh.info/).
 Gmsh can read in most mesh formats and output them into the Gmsh format which is readable from MFEM, however in this sample problem the Native geometry format is used and a mesh is generated from that. The geometry file for Gmsh is ("OxNanoSys1.geo") it is an extruded version of sample problem 0 and can be meshed in Gmsh to produce ("OxNanoSys1.msh"). The top and bottom boundaries are assumed to be free boundaries while the rest inherit form the 2D case. To run sample case use the following command:
 
-`mpirun -np 1 ./EMsampleProb --mesh mesh/OxNanoSys1.mesh`
+`mpirun -np 1 ./EMsampleProb --mesh mesh/OxNanoSys1.msh`
 

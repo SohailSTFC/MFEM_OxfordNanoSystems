@@ -1,5 +1,5 @@
-#ifndef DIRCHBCS_HPP
-#define DIRCHBCS_HPP
+#ifndef BOUNDARYCONDITIONS_HPP
+#define BOUNDARYCONDITIONS_HPP
 
 #include "mfem.hpp"
 #include "../../mfem-4.6/general/forall.hpp"
@@ -57,5 +57,12 @@ void applyDirchElimination(Vector &y, Array<int> dofs)
 // Sets the entries of one vector from another vector
 //
 void setValues(const Vector &k, Vector &y){ y = k; };
+
+
+//
+// Assemble a vector
+//
+void setValues(const Vector &k, Vector &y){ y = k; };
+
 
 #endif

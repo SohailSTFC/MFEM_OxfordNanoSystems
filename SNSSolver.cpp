@@ -1,6 +1,7 @@
 
 #include "mfem.hpp"
 #include <iostream>
+#include "include/boundaryConditions.hpp"
 #include "include/SNSSolver.hpp"
 
 using namespace mfem;
@@ -57,13 +58,12 @@ int main(int argc, char *argv[])
    Mesh *mesh = new Mesh(mesh_file, 1, 1);
    int dim = mesh->Dimension();
 
-
    // 5. Refine the serial mesh on all processors to increase the resolution. In
    //    this example we do 'ref_levels' of uniform refinement. We choose
    //    'ref_levels' to be the largest number that gives a final mesh with no
    //    more than 10,000 elements, unless the user specifies it as input.
-    if (ref_levels == -1) ref_levels = (int)floor(log(10000./mesh->GetNE())/log(2.)/dim);
-    for (int l = 0; l < ref_levels; l++) mesh->UniformRefinement();
+   if (ref_levels == -1) ref_levels = (int)floor(log(10000./mesh->GetNE())/log(2.)/dim);
+   for (int l = 0; l < ref_levels; l++) mesh->UniformRefinement();
 
    // 6. Define a parallel mesh by a partitioning of the serial mesh. Refine
    //    this mesh further in parallel to increase the resolution. Once the
@@ -76,19 +76,48 @@ int main(int argc, char *argv[])
    }
 
    // 7. Define a parallel finite element space on the parallel mesh. Here we
-   //    use the Raviart-Thomas finite elements of the specified order.
+   //    use the Taylor-Hood finite elements of the specified order.
    FiniteElementCollection *vel_coll(new H1_FECollection(order, dim));
    FiniteElementCollection *prs_coll(new H1_FECollection(order-1, dim));
 
-   ParFiniteElementSpace *R_space = new ParFiniteElementSpace(pmesh, vel_coll);
-   ParFiniteElementSpace *W_space = new ParFiniteElementSpace(pmesh, prs_coll);
+   vector<FiniteElementSpace*> feSpaces;
+   feSpaces.push_back(new ParFiniteElementSpace(pmesh, vel_coll));
+   feSpaces.push_back(new ParFiniteElementSpace(pmesh, prs_coll));
+
+   Array<int> BOffsets(3);
+   BOffsets[0] = 0;
+   BOffsets[1] = feSpaces[0]->GetVSize();
+   BOffsets[2] = feSpaces[1]->GetVSize();
+   BOffsets.PartialSum();
 
    // 8. Define Gridfunctions and initial conditions, BCS and 
-   //    
+   //  
    //
    ParGridFunction U, P;
    ParGridFunction Zero;
 
+   // 9. Build  the Problem/Operator
+   //    class
+   //
+   MemoryType mt = device.GetMemoryType();
+   SNSSOperator(feSpaces, BOffsets, dim, mt);
 
-  return 0;
-}
+   // 10. Build the Non-linear 
+   //     Newton-Rhapson solver
+   //
+/* NewtonSolver newton_solver;
+   newton_solver.iterative_mode = true;
+   newton_solver.SetSolver(*j_solver);
+   newton_solver.SetOperator(*this);
+   newton_solver.SetPrintLevel(-1);
+   newton_solver.SetMonitor(newton_monitor);
+   newton_solver.SetRelTol(rel_tol);
+   newton_solver.SetAbsTol(abs_tol);
+   newton_solver.SetMaxIter(iter);*/
+
+   //11. Output and visualise the data
+   //
+   //
+   ParaViewVisualise1("NavierStokes", &U, "Vel", order, pmesh, 0.0);
+   return 0;
+};

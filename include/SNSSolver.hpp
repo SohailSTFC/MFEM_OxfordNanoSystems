@@ -118,7 +118,6 @@ SNSSOperator::SNSSOperator(vector<ParFiniteElementSpace*> feSpaces_
   SNSSolverOp->SetBlock(0,0, OpUU.Ptr(), 1.0);
   SNSSolverOp->SetBlock(1,1, OpPP.Ptr(), 1.0);
   SNSSolverOp->SetBlock(0,1, OpUP.Ptr(),-1.0);
-
 }
 
 
@@ -163,7 +162,7 @@ void SNSSOperator::setDirchRefVector(const Vector x_Ref){setValues(x_Ref,x_Dirch
 //
 void SNSSOperator::Mult(const Vector &k, Vector &y) const
 {
-  //Set the bloundary values to non-Homogenous Dirch values
+  //Set the boundary values to non-Homogenous Dirch values
   setValues(k, w_vec);
   if(ess_bdr.Size() != 0){
     for(int I=0; I<feSpaces.size(); I++){

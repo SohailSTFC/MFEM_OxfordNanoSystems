@@ -127,9 +127,17 @@ int main(int argc, char *argv[])
    //     conditions
    //
    //
+   Array<Array<int>*> BDR_markers(feSpaces);
+   Array<int> uvel_BDRs(feSpaces[0]->GetMesh()->bdr_attributes.Max());
+   Array<int> pres_BDRs(feSpaces[1]->GetMesh()->bdr_attributes.Max());
 
+   uvel_BDRs=0;
+   pres_BDRs=0;
+   uvel_BDRs[0]=1;
+ //  pres_BDRs[0]=0;
 
-
+   BDR_markers[0] = &uvel_BDRs;
+   BDR_markers[1] = &pres_BDRs;
 
    // 11. Build the Non-linear 
    //     Newton-Rhapson solver

@@ -1,5 +1,5 @@
-#ifndef DARCYVISUALISATION_HPP
-#define DARCYVISUALISATION_HPP 
+#ifndef VISUALISATION_HPP
+#define VISUALISATION_HPP 
 
 #include "mfem.hpp"
 #include <fstream>
@@ -8,13 +8,14 @@
 using namespace std;
 using namespace mfem;
 
-void ParaViewVisualise(std::vector<ParGridFunction*> Fields
+void ParaViewVisualise(std::string ProbName
+                     , std::vector<ParGridFunction*> Fields
                      , std::vector<std::string>      FieldNames
 					 , int order
 					 , ParMesh *pmesh
 					 , double time){
   
-  ParaViewDataCollection paraview_dc("Example5P", pmesh);
+  ParaViewDataCollection paraview_dc(ProbName, pmesh);
   paraview_dc.SetPrefixPath("ParaView");
   paraview_dc.SetLevelsOfDetail(order);
   paraview_dc.SetDataFormat(VTKFormat::BINARY);
@@ -24,26 +25,6 @@ void ParaViewVisualise(std::vector<ParGridFunction*> Fields
   for(int I=0; I< FieldNames.size(); I++) paraview_dc.RegisterField(FieldNames[I],Fields[I]);
   paraview_dc.Save();
 };
-
-
-void ParaViewVisualise1(std::string     ProbName
-                     , ParGridFunction* Field
-                     , std::string      FieldName
-					 , int order
-					 , ParMesh *pmesh
-					 , double time){
- 
-  ParaViewDataCollection paraview_dc(ProbName, pmesh);
-  paraview_dc.SetPrefixPath("ParaView");
-  paraview_dc.SetLevelsOfDetail(order);
-  paraview_dc.SetDataFormat(VTKFormat::BINARY);
-  paraview_dc.SetHighOrderOutput(true);
-  paraview_dc.SetCycle(0);
-  paraview_dc.SetTime(time);
- paraview_dc.RegisterField(FieldName,Field);
-  paraview_dc.Save();
-};
-
 
 #ifdef MFEM_USE_ADIOS2
 void AdiosVisualise(std::vector<ParGridFunction*> Fields

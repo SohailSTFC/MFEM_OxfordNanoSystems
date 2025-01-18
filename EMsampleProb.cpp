@@ -159,7 +159,7 @@ int main(int argc, char *argv[])
    //Visualise the results using ParaView
    double time = 0.0;
    demoProb.SetFields();
-   ParaViewVisualise(demoProb.Fields, demoProb.FieldNames, order, pmesh, time);
+   ParaViewVisualise("Darcy",demoProb.Fields, demoProb.FieldNames, order, pmesh, time);
 
    // 20. Free the used memory.
    delete W_space;

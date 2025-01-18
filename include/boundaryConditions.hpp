@@ -59,10 +59,4 @@ void applyDirchElimination(Vector &y, Array<int> dofs)
 void setValues(const Vector &k, Vector &y){ y = k; };
 
 
-//
-// Assemble a vector
-//
-void setValues(const Vector &k, Vector &y){ y = k; };
-
-
 #endif

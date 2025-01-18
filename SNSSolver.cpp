@@ -2,6 +2,7 @@
 #include "mfem.hpp"
 #include <iostream>
 #include "include/boundaryConditions.hpp"
+#include "include/Visualisation.hpp"
 #include "include/SNSSolver.hpp"
 
 using namespace mfem;
@@ -19,9 +20,9 @@ int main(int argc, char *argv[])
 
    // 2. Parse command-line options.
 //   const char *mesh_file = "mesh/star.mesh";
-   const char *mesh_file = "mesh/OxNanoSys0.mesh";
-   int ref_levels = -1;
-   int order = 2;
+   const char *mesh_file = "mesh/star.mesh";
+   int  ref_levels = -1;
+   int  order=3;
    bool par_format = false;
    bool pa = false;
    const char *device_config = "cpu"; //"cpu";//"ceed-cpu";
@@ -77,35 +78,63 @@ int main(int argc, char *argv[])
 
    // 7. Define a parallel finite element space on the parallel mesh. Here we
    //    use the Taylor-Hood finite elements of the specified order.
-   FiniteElementCollection *vel_coll(new H1_FECollection(order, dim));
-   FiniteElementCollection *prs_coll(new H1_FECollection(order-1, dim));
+   vector<int> orders;             
+   orders.push_back(order);
+   orders.push_back(order-1);
+   FiniteElementCollection *vel_coll(new H1_FECollection(orders[0], dim));
+   FiniteElementCollection *prs_coll(new H1_FECollection(orders[1], dim));
 
-   vector<FiniteElementSpace*> feSpaces;
-   feSpaces.push_back(new ParFiniteElementSpace(pmesh, vel_coll));
-   feSpaces.push_back(new ParFiniteElementSpace(pmesh, prs_coll));
+   vector<ParFiniteElementSpace*> feSpaces;
+   feSpaces.push_back(new ParFiniteElementSpace(pmesh, vel_coll, dim));
+   feSpaces.push_back(new ParFiniteElementSpace(pmesh, prs_coll, 1));
 
-   Array<int> BOffsets(3);
+   Array<int> BOffsets(3), trueBOffsets(3);
    BOffsets[0] = 0;
-   BOffsets[1] = feSpaces[0]->GetVSize();
-   BOffsets[2] = feSpaces[1]->GetVSize();
+   for(int I=0; I<feSpaces.size(); I++) BOffsets[I+1] = feSpaces[I]->GetVSize();
    BOffsets.PartialSum();
 
-   // 8. Define Gridfunctions and initial conditions, BCS and 
-   //  
-   //
-   ParGridFunction U, P;
-   ParGridFunction Zero;
+   trueBOffsets[0] = 0;
+   for(int I=0; I<feSpaces.size(); I++) trueBOffsets[I+1] = feSpaces[I]->GetTrueVSize();
+   trueBOffsets.PartialSum();
 
-   // 9. Build  the Problem/Operator
+
+   // 8. Define Gridfunctions and initial conditions, BCS and 
+   //
+   //
+   BlockVector x_vec(BOffsets), tx_vec(trueBOffsets), tb_vec(trueBOffsets);
+   vector<ParGridFunction*> U;
+   vector<string> VarNames;
+ 
+   for(int I=0; I<feSpaces.size(); I++){
+     U.push_back(new ParGridFunction);
+     U[I]->MakeRef(feSpaces[I], x_vec.GetBlock(I), 0);
+     U[I]->Distribute(&(tx_vec.GetBlock(I)));
+   }
+   VarNames.push_back("Velocity");
+   VarNames.push_back("Pressure");
+
+
+   // 9. Build  the Problem-Operator
    //    class
    //
+   int PSize=0;
+   for(int I=0; I<feSpaces.size(); I++) PSize += feSpaces[I]->GetTrueVSize();
    MemoryType mt = device.GetMemoryType();
-   SNSSOperator(feSpaces, BOffsets, dim, mt);
+   SNSSOperator sampleProb(feSpaces, trueBOffsets, dim, mt, PSize);
 
-   // 10. Build the Non-linear 
+
+   // 10. Set the boundary
+   //     conditions
+   //
+   //
+
+
+
+
+   // 11. Build the Non-linear 
    //     Newton-Rhapson solver
    //
-/* NewtonSolver newton_solver;
+   NewtonSolver newton_solver;/*
    newton_solver.iterative_mode = true;
    newton_solver.SetSolver(*j_solver);
    newton_solver.SetOperator(*this);
@@ -114,10 +143,22 @@ int main(int argc, char *argv[])
    newton_solver.SetRelTol(rel_tol);
    newton_solver.SetAbsTol(abs_tol);
    newton_solver.SetMaxIter(iter);*/
+   tb_vec = 1.0;
+   tx_vec = 1.0;
+   sampleProb.Mult(tb_vec,tx_vec);
+   for(int I=0; I<U.size(); I++) U[I]->Distribute(&(tx_vec.GetBlock(I)));
 
-   //11. Output and visualise the data
+   //12. Output and visualise the data
    //
    //
-   ParaViewVisualise1("NavierStokes", &U, "Vel", order, pmesh, 0.0);
+   //for(int I=0; I<U.size(); I++) U[I]->Distribute(&(tx_vec.GetBlock(I)));
+   ParaViewVisualise("NavierStokes", U, VarNames, order, pmesh, 0.0);
+
+
+   //12. Clean up
+   //
+   //
+  
+
    return 0;
 };

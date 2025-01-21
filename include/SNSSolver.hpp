@@ -8,14 +8,24 @@
 
 using namespace mfem;
 using namespace std;
-
+//
+// Author: Sohail Rathore
+// Date  : 14/01/2025
+//
+// A steady state Navier-Stokes
+// Operator that calculates the
+// residual and Jacobian using
+// the Taylor-Hood element
+// H1(order)-H1(order-1)
+//
+//
 class SNSSOperator : public Operator{
   private:
     int Dim;
     bool PA=true;
 
 	//FE spaces and Forms
-    vector<ParFiniteElementSpace*> feSpaces;
+    vector<ParFiniteElementSpace*> feqSpaces;
     ParBlockNonlinearForm  *NLForm;  //Nonlinear stuff
     vector<ParLinearForm*>  LForms;  //Applied forces
     vector<int>             L_ints;  //Integrated L-Forms
@@ -51,11 +61,13 @@ class SNSSOperator : public Operator{
 
     void SetBCs(Array<Array<int>*> ess_bdr);
 
-    void setDirchRefVector(const Vector x_Ref);
+    void SetDirchRefVector(const Vector x_Ref);
 
     virtual void Mult(const Vector &k, Vector &y) const;
 
     virtual Operator &GetGradient(const Vector &xp) const;
+
+    virtual void SetOperator(const Operator &op){};
 };
 
 //
@@ -154,7 +166,7 @@ void SNSSOperator::SetBCs(Array<Array<int>*> ess_bdr_){ess_bdr = Array<Array<int
 //
 // Set the reference dirchelet BCs
 //
-void SNSSOperator::setDirchRefVector(const Vector x_Ref){setValues(x_Ref,x_DirchRef);};
+void SNSSOperator::SetDirchRefVector(const Vector x_Ref){setValues(x_Ref,x_DirchRef);};
 
 
 //

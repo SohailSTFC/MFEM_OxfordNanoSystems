@@ -124,36 +124,46 @@ int main(int argc, char *argv[])
 
 
    // 10. Set the boundary
-   //     conditions
+   //     and initial conditions
    //
    //
-   Array<Array<int>*> BDR_markers(feSpaces);
+   Array<Array<int>*> BDR_markers(feSpaces.size());
    Array<int> uvel_BDRs(feSpaces[0]->GetMesh()->bdr_attributes.Max());
    Array<int> pres_BDRs(feSpaces[1]->GetMesh()->bdr_attributes.Max());
+
+   cout << feSpaces[0]->GetMesh()->bdr_attributes.Max() << "\n";
 
    uvel_BDRs=0;
    pres_BDRs=0;
    uvel_BDRs[0]=1;
- //  pres_BDRs[0]=0;
+   pres_BDRs[0]=0;
 
    BDR_markers[0] = &uvel_BDRs;
    BDR_markers[1] = &pres_BDRs;
 
-   // 11. Build the Non-linear 
-   //     Newton-Rhapson solver
-   //
-   NewtonSolver newton_solver;/*
-   newton_solver.iterative_mode = true;
-   newton_solver.SetSolver(*j_solver);
-   newton_solver.SetOperator(*this);
-   newton_solver.SetPrintLevel(-1);
-   newton_solver.SetMonitor(newton_monitor);
-   newton_solver.SetRelTol(rel_tol);
-   newton_solver.SetAbsTol(abs_tol);
-   newton_solver.SetMaxIter(iter);*/
+   sampleProb.SetBCs(BDR_markers);
+ //sampleProb.SetDirchRefVector(const Vector x_Ref);
    tb_vec = 1.0;
    tx_vec = 1.0;
    sampleProb.Mult(tb_vec,tx_vec);
+
+
+   // 11. Build the Non-linear 
+   //     Newton-Rhapson solver
+   //
+   double rel_tol = 1.0e-15;
+   double abs_tol = 1.0e-06;
+   int iter = 300;
+   NewtonSolver newton_solver;
+   newton_solver.iterative_mode = true;
+ //newton_solver.SetSolver(*j_solver);
+   newton_solver.SetOperator(sampleProb);
+   newton_solver.SetPrintLevel(-1);
+   newton_solver.SetRelTol(rel_tol);
+   newton_solver.SetAbsTol(abs_tol);
+   newton_solver.SetMaxIter(iter);
+
+ //  newton_solver.Mult(tb_vec,tx_vec);
    for(int I=0; I<U.size(); I++) U[I]->Distribute(&(tx_vec.GetBlock(I)));
 
    //12. Output and visualise the data

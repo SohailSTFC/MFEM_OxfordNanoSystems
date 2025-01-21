@@ -1,5 +1,5 @@
-#ifndef EMPROBLEM_HPP
-#define EMPROBLEM_HPP
+#ifndef EMPROBLEM2_HPP
+#define EMPROBLEM2_HPP
 
 #include "mfem.hpp"
 #include "boundaryConditions.hpp"
@@ -21,9 +21,8 @@ using namespace std;
 // 3-D
 //
 // The equation system is:
-//  J + sigma*( Grad(Vb) - U x B) = 0
-//  Curl(B) - mu*J = 0
-//  Div( J - sigma*(U x B) ) = 0
+//  J + sigma*Grad(Vb) = 0
+//  Div(J) = 0
 //  V - Vb = 0
 //
 class EMOperator : public Operator{
@@ -36,13 +35,13 @@ class EMOperator : public Operator{
     vector<ParLinearForm*>  LForms;  //Applied forces
     vector<int>             L_ints;  //Integrated L-Forms
 
-    ParBilinearForm      *JJForm=NULL,*BBForm=NULL,*VVForm=NULL;   //Linear type forms
-    ParMixedBilinearForm *JBForm=NULL,*JVbForm=NULL,*BJForm=NULL;  //Mixed components
-    ParMixedBilinearForm *VbJForm=NULL,*VbBForm=NULL,*VVbForm=NULL;//Mixed components
+    ParBilinearForm      *JJForm=NULL,*VVForm=NULL;  //Bilinear type forms
+    ParMixedBilinearForm *JVbForm=NULL;              //Mixed components
+    ParMixedBilinearForm *VbJForm=NULL,*VVbForm=NULL;//Mixed components
 
     //Matrix Operators 
-    OperatorPtr OpJJ, OpBB, OpVV;
-    OperatorPtr OpJB, OpJVb, OpBJ, OpVbJ, OpVbB, OpVVb;
+    OperatorPtr OpJJ, OpVV;
+    OperatorPtr OpJVb, OpVbJ, OpVVb;
     TransposeOperator *OpJVb_T, *OpVbJ_T;
 
     BlockOperator *EMSolverOp=NULL;
@@ -55,7 +54,6 @@ class EMOperator : public Operator{
 
     //Electromagnetic Coefficients
     ConstantCoefficient mu, sigma, one;
-    VectorGridFunctionCoefficient u_vel;
 
     //Assemble the linear forms
     void AssembleLinearForms();
@@ -64,7 +62,6 @@ class EMOperator : public Operator{
     EMOperator(vector<ParFiniteElementSpace*> feSpaces_
                , Array<int> BOffsets
                , Array<Array<int>*> ess_bdrs
-               , ParGridFunction *U
                , int dim
                , MemoryType mt
 			   , int OpSize);
@@ -84,11 +81,10 @@ class EMOperator : public Operator{
 EMOperator::EMOperator(vector<ParFiniteElementSpace*> feSpaces_
                      , Array<int> BOffsets
 					 , Array<Array<int>*> ess_bdrs
-		             , ParGridFunction *U
 		             , int dim
                      , MemoryType mt
 		             , int OpSize): Operator(OpSize),
-		             mu(1.0), sigma(1.0), one(1.0), u_vel(U)
+		             mu(1.0), sigma(1.0), one(1.0)
 {	
   Dim = dim;
   feSpaces.clear();
@@ -100,15 +96,11 @@ EMOperator::EMOperator(vector<ParFiniteElementSpace*> feSpaces_
 
   //Make the Bilinear forms from the FESpaces
   JJForm = new ParBilinearForm(feSpaces[0]);
-  BBForm = new ParBilinearForm(feSpaces[1]);
-  VVForm = new ParBilinearForm(feSpaces[3]);
+  VVForm = new ParBilinearForm(feSpaces[2]);
 
-  JBForm  = new ParMixedBilinearForm(feSpaces[0],feSpaces[1]);
-  JVbForm = new ParMixedBilinearForm(feSpaces[0],feSpaces[2]);
-  BJForm  = new ParMixedBilinearForm(feSpaces[0],feSpaces[1]);
-  VbJForm = new ParMixedBilinearForm(feSpaces[2],feSpaces[0]);
-  VbBForm = new ParMixedBilinearForm(feSpaces[1],feSpaces[2]);
-  VVbForm = new ParMixedBilinearForm(feSpaces[2],feSpaces[3]);
+  JVbForm = new ParMixedBilinearForm(feSpaces[0],feSpaces[1]);
+  VbJForm = new ParMixedBilinearForm(feSpaces[1],feSpaces[0]);
+  VVbForm = new ParMixedBilinearForm(feSpaces[1],feSpaces[2]);
 
   BlockOffsets = Array<int>(BOffsets);
   ess_bdr = Array<Array<int>*>(ess_bdrs);
@@ -129,28 +121,14 @@ EMOperator::EMOperator(vector<ParFiniteElementSpace*> feSpaces_
   JJForm->Assemble();
   JJForm->FormSystemMatrix(empty_tdofs, OpJJ);
 
-  BBForm->AddDomainIntegrator( new VectorFECurlIntegrator(mu) );
-  BBForm->Assemble();
-  BBForm->FormSystemMatrix(empty_tdofs, OpBB);
-
   VVForm->AddDomainIntegrator( new MassIntegrator(one) );
   VVForm->Assemble();
   VVForm->FormSystemMatrix(empty_tdofs, OpVV);
 
   //Mixed Bilinear Forms
-  if(Dim >= 3){
-    JBForm->AddDomainIntegrator( new MixedCrossProductIntegrator(u_vel));
-    JBForm->Assemble();
-    JBForm->FormRectangularSystemMatrix(empty_tdofs, empty_tdofs, OpJB);
-  }
-
   JVbForm->AddDomainIntegrator( new VectorFEDivergenceIntegrator);
   JVbForm->Assemble();
   JVbForm->FormRectangularSystemMatrix(empty_tdofs, empty_tdofs, OpJVb);
-
-  BJForm->AddDomainIntegrator( new MixedVectorMassIntegrator);
-  BJForm->Assemble();
-  BJForm->FormRectangularSystemMatrix(empty_tdofs, empty_tdofs, OpBJ);
 
   VbJForm->AddDomainIntegrator( new MixedScalarWeakGradientIntegrator);
   VbJForm->Assemble();
@@ -160,10 +138,6 @@ EMOperator::EMOperator(vector<ParFiniteElementSpace*> feSpaces_
   VVbForm->Assemble();
   VVbForm->FormRectangularSystemMatrix(empty_tdofs, empty_tdofs, OpVVb);
 
-/*
-    ParMixedBilinearForm  *VbBForm=NULL;//Mixed components
-    OperatorPtr OpVbB;
-*/
   //Transpose certain operators
   OpJVb_T = new TransposeOperator(OpJVb.Ptr());
   OpVbJ_T = new TransposeOperator(OpVbJ.Ptr());
@@ -173,20 +147,14 @@ EMOperator::EMOperator(vector<ParFiniteElementSpace*> feSpaces_
 
   //Row 0
   EMSolverOp->SetBlock(0,0, OpJJ.Ptr(), 1.0);
-  if(Dim >= 3)EMSolverOp->SetBlock(0,1, OpJB.Ptr(), 1.0);
-  EMSolverOp->SetBlock(0,2, OpJVb_T,    1.0);
+  EMSolverOp->SetBlock(0,1, OpJVb_T,    1.0);
 
   //Row 1
-  EMSolverOp->SetBlock(1,1, OpBB.Ptr(), 1.0);
-  EMSolverOp->SetBlock(1,0, OpBJ.Ptr(),-1.0);
+  EMSolverOp->SetBlock(1,0, OpVbJ_T,    1.0);
 
   //Row 2
-  EMSolverOp->SetBlock(2,0, OpVbJ_T,    1.0);
-
-
-  //Row 3
-  EMSolverOp->SetBlock(3,3, OpVV.Ptr(),  1.0);
-  EMSolverOp->SetBlock(3,2, OpVVb.Ptr(),-1.0);
+  EMSolverOp->SetBlock(2,2, OpVV.Ptr(),  1.0);
+  EMSolverOp->SetBlock(2,1, OpVVb.Ptr(),-1.0);
 }
 
 

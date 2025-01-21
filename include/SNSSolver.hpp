@@ -25,7 +25,7 @@ class SNSSOperator : public Operator{
     bool PA=true;
 
 	//FE spaces and Forms
-    vector<ParFiniteElementSpace*> feqSpaces;
+    vector<ParFiniteElementSpace*> feSpaces;
     ParBlockNonlinearForm  *NLForm;  //Nonlinear stuff
     vector<ParLinearForm*>  LForms;  //Applied forces
     vector<int>             L_ints;  //Integrated L-Forms

@@ -19,7 +19,7 @@ CONFIG_MK = $(MFEM_INSTALL_DIR)/share/mfem/config.mk
 MFEM_LIB_FILE = mfem_is_not_built
 -include $(CONFIG_MK)
 
-EXECUTABLES = EMsampleProb SNSSolver
+EXECUTABLES = EMProb2 EMProb SNSSolver
 
 .PHONY: all clean
 

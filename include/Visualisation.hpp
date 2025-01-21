@@ -23,6 +23,7 @@ void ParaViewVisualise(std::string ProbName
   paraview_dc.SetCycle(0);
   paraview_dc.SetTime(time);
   for(int I=0; I< FieldNames.size(); I++) paraview_dc.RegisterField(FieldNames[I],Fields[I]);
+  paraview_dc.RegisterField(FieldNames[0],Fields[0]);
   paraview_dc.Save();
 };
 

@@ -19,7 +19,6 @@ int main(int argc, char *argv[])
    bool verbose = (myid == 0);
 
    // 2. Parse command-line options.
-//   const char *mesh_file = "mesh/star.mesh";
    const char *mesh_file = "mesh/star.mesh";
    int  ref_levels = -1;
    int  order=3;

@@ -16,7 +16,7 @@
 #include <iostream>
 #include "include/boundaryConditions.hpp"
 #include "include/Visualisation.hpp"
-#include "include/EMProblem2.hpp"
+#include "include/EMProblem3.hpp"
 
 using namespace mfem;
 using namespace std;
@@ -30,12 +30,12 @@ int main(int argc, char *argv[])
    Hypre::Init();
 
    // 2. Parse command-line options.
-   const char *mesh_file = "mesh/OxNanoSys1.msh";
+   const char *mesh_file = "mesh/OxNanoSys0.mesh";
    int  ref_levels = -1;
-   int  order=3;
+   int  order=1;
    bool par_format = false;
    bool pa = false;
-   const char *device_config = "cpu"; //"cpu";//"ceed-cpu";
+   const char *device_config = "ceed-cpu"; //"cpu";//"ceed-cpu";
    bool visualization = 1;
    bool verbose = (myid == 0);
 
@@ -83,22 +83,20 @@ int main(int argc, char *argv[])
    ParMesh *pmesh = new ParMesh(MPI_COMM_WORLD, *mesh);
    delete mesh;
    {
-      int par_ref_levels = 1;
+      int par_ref_levels = 3;
       for (int l = 0; l < par_ref_levels; l++) pmesh->UniformRefinement();
    }
 
    // 7. Define a parallel finite element space on the parallel mesh. Here we
    //    use the Hybrid finite elements of the specified order.
    FiniteElementCollection *J_coll (new RT_FECollection(order, dim));
-   FiniteElementCollection *Vb_coll(new L2_FECollection(order, dim));
    FiniteElementCollection *V_coll (new H1_FECollection(order, dim));
 
    vector<ParFiniteElementSpace*> feSpaces;
    feSpaces.push_back(new ParFiniteElementSpace(pmesh, J_coll));
-   feSpaces.push_back(new ParFiniteElementSpace(pmesh, Vb_coll,  1));
-   feSpaces.push_back(new ParFiniteElementSpace(pmesh, V_coll,   1));
+   feSpaces.push_back(new ParFiniteElementSpace(pmesh, V_coll,1));
 
-   Array<int> BOffsets(4), trueBOffsets(4);
+   Array<int> BOffsets(3), trueBOffsets(3);
    BOffsets[0] = 0;
    for(int I=0; I<feSpaces.size(); I++) BOffsets[I+1] = feSpaces[I]->GetVSize();
    BOffsets.PartialSum();
@@ -114,8 +112,7 @@ int main(int argc, char *argv[])
    int nTags=feSpaces[0]->GetMesh()->bdr_attributes.Max();
    Array<Array<int>*> BDR_markers(feSpaces.size());
    Array<int> J_BDRs(feSpaces[0]->GetMesh()->bdr_attributes.Max());
-   Array<int> Vb_BDRs; //Must be empty as has no-Boundary-DOFs
-   Array<int> V_BDRs(feSpaces[2]->GetMesh()->bdr_attributes.Max());
+   Array<int> V_BDRs(feSpaces[1]->GetMesh()->bdr_attributes.Max());
 
    J_BDRs=1;
    V_BDRs=0;
@@ -129,44 +126,50 @@ int main(int argc, char *argv[])
    if(nTags>2) V_BDRs[2]=1;
 
    BDR_markers[0] = &J_BDRs;
-   BDR_markers[1] = &Vb_BDRs;
-   BDR_markers[2] = &V_BDRs;
+   BDR_markers[1] = &V_BDRs;
 
    // 9. Define Gridfunctions and initial conditions, BCS and 
    //
    //
    BlockVector x_vec(BOffsets), tx_vec(trueBOffsets), tb_vec(trueBOffsets);
-   vector<ParGridFunction*> JVbV;
+   vector<ParGridFunction*> JV;
    vector<string> VarNames;
  
    for(int I=0; I<feSpaces.size(); I++){
-     JVbV.push_back(new ParGridFunction);
-     JVbV[I]->MakeRef(feSpaces[I], x_vec.GetBlock(I), 0);
-     JVbV[I]->Distribute(&(tx_vec.GetBlock(I)));
+     JV.push_back(new ParGridFunction);
+     JV[I]->MakeRef(feSpaces[I], x_vec.GetBlock(I), 0);
+     JV[I]->Distribute(&(tx_vec.GetBlock(I)));
    }
    VarNames.push_back("J_Field");
-   VarNames.push_back("Vb_L2_Potential");
    VarNames.push_back("V_H1_Potential");
 
-   tb_vec = 0.1;
-   tx_vec = 0.1;
+   tb_vec = 0.0;
+   tx_vec.GetBlock(1) = 0.1;
    
    //Set the BCs from the coefficient funcs
    Vector ZeroVec(dim); ZeroVec = 0.0;
    VectorConstantCoefficient ZeroV(ZeroVec);
-   ConstantCoefficient ZeroS(3.0);
+   ConstantCoefficient ThreeS(3.0);
+   ConstantCoefficient ZeroS(0.0);
 
-   JVbV[0]->ProjectBdrCoefficient(ZeroV,*BDR_markers[0]);
-   JVbV[2]->ProjectBdrCoefficient(ZeroS,*BDR_markers[2]);
+   JV[0]->ProjectBdrCoefficient(ZeroV,*BDR_markers[0]);
+
+   Array<int> V_BDRs_tmp(nTags);
+   V_BDRs_tmp = 0;
+   if(nTags>1) V_BDRs_tmp[1]=1;
+   if(nTags>2) V_BDRs_tmp[2]=1;
+   JV[1]->ProjectBdrCoefficient(ThreeS,V_BDRs_tmp);
+   V_BDRs_tmp = 0;
+   V_BDRs_tmp[0]=1;
+   JV[1]->ProjectBdrCoefficient(ZeroS,V_BDRs_tmp);
+
 
    Array<int> ess_Jtdof, ess_Vtdof;
    feSpaces[0]->GetEssentialTrueDofs(*BDR_markers[0], ess_Jtdof);
-   feSpaces[2]->GetEssentialTrueDofs(*BDR_markers[2], ess_Vtdof);
+   feSpaces[1]->GetEssentialTrueDofs(*BDR_markers[1], ess_Vtdof);
 
-   applyDirchValues(*JVbV[0], tx_vec.GetBlock(0), ess_Jtdof);
-   applyDirchValues(*JVbV[2], tx_vec.GetBlock(2), ess_Vtdof);
-   applyDirchValues(*JVbV[0], tb_vec.GetBlock(0), ess_Jtdof);
-   applyDirchValues(*JVbV[2], tb_vec.GetBlock(2), ess_Vtdof);
+   applyDirchValues(*JV[0], tx_vec.GetBlock(0), ess_Jtdof);
+   applyDirchValues(*JV[1], tx_vec.GetBlock(1), ess_Vtdof);
 
    // 10. Build  the Problem-Operator
    //     class
@@ -175,8 +178,6 @@ int main(int argc, char *argv[])
    for(int I=0; I<feSpaces.size(); I++) PSize += feSpaces[I]->GetTrueVSize();
    MemoryType mt = device.GetMemoryType();
    EMOperator sampleProb(feSpaces, trueBOffsets, BDR_markers, dim, mt, PSize);
-   sampleProb.SetDirchRefVector(tx_vec);
-
 
    // 11. Build the Non-linear 
    //     system solver
@@ -184,7 +185,8 @@ int main(int argc, char *argv[])
    double rel_tol = 1.0e-15;
    double abs_tol = 1.0e-06;
    int maxIter = 250;
-   MINRESSolver *solver = new MINRESSolver(MPI_COMM_WORLD);
+   //MINRESSolver *solver = new MINRESSolver(MPI_COMM_WORLD);
+   GMRESSolver *solver = new GMRESSolver(MPI_COMM_WORLD);
    solver->SetAbsTol(abs_tol);
    solver->SetRelTol(rel_tol);
    solver->SetMaxIter(maxIter);
@@ -195,9 +197,8 @@ int main(int argc, char *argv[])
    //12. Output and visualise the data
    //
    //
-   for(int I=0; I<JVbV.size(); I++) JVbV[I]->Distribute(&(tx_vec.GetBlock(I)));
-   ParaViewVisualise("EMProblem1", JVbV, VarNames, order, pmesh, 0.0);
-
+   for(int I=0; I<JV.size(); I++) JV[I]->Distribute(&(tx_vec.GetBlock(I)));
+   ParaViewVisualise("EMProblem3", JV, VarNames, order, pmesh, 0.0);
 
    //13. Clean up and
    //    deallocation

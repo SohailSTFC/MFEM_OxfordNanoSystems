@@ -116,24 +116,6 @@ int main(int argc, char *argv[])
    trueBOffsets.PartialSum();
 
 
-   // 8. Define Gridfunctions and initial conditions, BCS and 
-   //
-   //
-   BlockVector x_vec(BOffsets), tx_vec(trueBOffsets), tb_vec(trueBOffsets);
-   vector<ParGridFunction*> JBVbV;
-   vector<string> VarNames;
- 
-   for(int I=0; I<feSpaces.size(); I++){
-     JBVbV.push_back(new ParGridFunction);
-     JBVbV[I]->MakeRef(feSpaces[I], x_vec.GetBlock(I), 0);
-     JBVbV[I]->Distribute(&(tx_vec.GetBlock(I)));
-   }
-   VarNames.push_back("J-Field");
-   VarNames.push_back("B-Field");
-   VarNames.push_back("Vb-L2-Potential");
-   VarNames.push_back("V-H1-Potential");
-
-
    // 9. Set the boundary
    //    and initial conditions
    //
@@ -162,7 +144,25 @@ int main(int argc, char *argv[])
    BDR_markers[2] = &Vb_BDRs;
    BDR_markers[3] = &V_BDRs;
 
-   tb_vec = 1.0;
+
+   // 8. Define Gridfunctions and initial conditions, BCS and 
+   //
+   //
+   BlockVector x_vec(BOffsets), tx_vec(trueBOffsets), tb_vec(trueBOffsets);
+   vector<ParGridFunction*> JBVbV;
+   vector<string> VarNames;
+ 
+   for(int I=0; I<feSpaces.size(); I++){
+     JBVbV.push_back(new ParGridFunction);
+     JBVbV[I]->MakeRef(feSpaces[I], x_vec.GetBlock(I), 0);
+     JBVbV[I]->Distribute(&(tx_vec.GetBlock(I)));
+   }
+   VarNames.push_back("J-Field");
+   VarNames.push_back("B-Field");
+   VarNames.push_back("Vb-L2-Potential");
+   VarNames.push_back("V-H1-Potential");
+
+   tb_vec = 0.0;
    tx_vec = 1.0;
 
 
@@ -174,7 +174,7 @@ int main(int argc, char *argv[])
    FiniteElementCollection *Vel_coll (new H1_FECollection(order, dim));
    ParFiniteElementSpace *Vel_space = new ParFiniteElementSpace(pmesh, J_coll, dim);
    Vector vel_vec( Vel_space->GetTrueVSize());
-   vel_vec = 1.0;
+   vel_vec = 0.0;
    ParGridFunction *u_vel  = new ParGridFunction;
    u_vel->MakeRef(Vel_space, vel_vec, 0);
    u_vel->Distribute(&(vel_vec));
@@ -190,11 +190,11 @@ int main(int argc, char *argv[])
    //
    double rel_tol = 1.0e-15;
    double abs_tol = 1.0e-06;
-   int maxIter = 20;
+   int maxIter = 200;
    FGMRESSolver *solver = new FGMRESSolver(MPI_COMM_WORLD);
    solver->SetAbsTol(abs_tol);
    solver->SetRelTol(rel_tol);
-   solver->SetKDim(100);
+   solver->SetKDim(50);
    solver->SetMaxIter(maxIter);
    solver->SetPrintLevel(verbose);
    solver->SetOperator(sampleProb);

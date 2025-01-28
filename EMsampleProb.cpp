@@ -111,7 +111,7 @@ int main(int argc, char *argv[])
    //    this example we do 'ref_levels' of uniform refinement. We choose
    //    'ref_levels' to be the largest number that gives a final mesh with no
    //    more than 10,000 elements, unless the user specifies it as input.
-  /* {
+   {
       if (ref_levels == -1)
       {
          ref_levels = (int)floor(log(10000./mesh->GetNE())/log(2.)/dim);
@@ -121,7 +121,7 @@ int main(int argc, char *argv[])
       {
          mesh->UniformRefinement();
       }
-   }*/
+   }
 
    // 6. Define a parallel mesh by a partitioning of the serial mesh. Refine
    //    this mesh further in parallel to increase the resolution. Once the
@@ -159,7 +159,7 @@ int main(int argc, char *argv[])
    //Visualise the results using ParaView
    double time = 0.0;
    demoProb.SetFields();
-   ParaViewVisualise("Darcy",demoProb.Fields, demoProb.FieldNames, order, pmesh, time);
+   ParaViewVisualise("EMSampleProb",demoProb.Fields, demoProb.FieldNames, order, pmesh, time);
 
    // 20. Free the used memory.
    delete W_space;

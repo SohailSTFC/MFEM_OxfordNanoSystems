@@ -47,6 +47,7 @@ class EMOperator : public Operator{
 
     BlockOperator *EMSolverOp=NULL;
 
+    Array<int> ess_Jtdof, ess_Btdof, ess_Vtdof;
     Array<int> BlockOffsets;
     Array<Array<int> *> ess_bdr;
 
@@ -113,6 +114,10 @@ EMOperator::EMOperator(vector<ParFiniteElementSpace*> feSpaces_
   BlockOffsets = Array<int>(BOffsets);
   ess_bdr = Array<Array<int>*>(ess_bdrs);
 
+  feSpaces[0]->GetEssentialTrueDofs(*ess_bdr[0], ess_Jtdof);
+  feSpaces[1]->GetEssentialTrueDofs(*ess_bdr[1], ess_Btdof);
+  feSpaces[3]->GetEssentialTrueDofs(*ess_bdr[3], ess_Vtdof);
+
   //Set the Vectors (zero them)
   z_vec.Update(BlockOffsets);      z_vec = 0.0;
   w_vec.Update(BlockOffsets);      w_vec = 0.0;
@@ -127,30 +132,32 @@ EMOperator::EMOperator(vector<ParFiniteElementSpace*> feSpaces_
 
   JJForm->AddDomainIntegrator( new VectorFEMassIntegrator(one) );
   JJForm->Assemble();
-  JJForm->FormSystemMatrix(empty_tdofs, OpJJ);
+  JJForm->FormSystemMatrix(ess_Jtdof, OpJJ);
 
   BBForm->AddDomainIntegrator( new VectorFECurlIntegrator(mu) );
   BBForm->Assemble();
-  BBForm->FormSystemMatrix(empty_tdofs, OpBB);
+  BBForm->FormSystemMatrix(ess_Btdof, OpBB);
 
   VVForm->AddDomainIntegrator( new MassIntegrator(one) );
   VVForm->Assemble();
-  VVForm->FormSystemMatrix(empty_tdofs, OpVV);
+  VVForm->FormSystemMatrix(ess_Vtdof, OpVV);
 
   //Mixed Bilinear Forms
   if(Dim >= 3){
     JBForm->AddDomainIntegrator( new MixedCrossProductIntegrator(u_vel));
     JBForm->Assemble();
-    JBForm->FormRectangularSystemMatrix(empty_tdofs, empty_tdofs, OpJB);
+    JBForm->FormRectangularSystemMatrix(ess_Jtdof, empty_tdofs, OpJB);
   }
+
+//ess_Jtdof, ess_Btdof, ess_Vtdof;
 
   JVbForm->AddDomainIntegrator( new VectorFEDivergenceIntegrator);
   JVbForm->Assemble();
-  JVbForm->FormRectangularSystemMatrix(empty_tdofs, empty_tdofs, OpJVb);
+  JVbForm->FormRectangularSystemMatrix(empty_tdofs, ess_Jtdof, OpJVb);
 
   BJForm->AddDomainIntegrator( new MixedVectorMassIntegrator);
   BJForm->Assemble();
-  BJForm->FormRectangularSystemMatrix(empty_tdofs, empty_tdofs, OpBJ);
+  BJForm->FormRectangularSystemMatrix(ess_Btdof, empty_tdofs, OpBJ);
 
   VbJForm->AddDomainIntegrator( new MixedScalarWeakGradientIntegrator);
   VbJForm->Assemble();
@@ -158,7 +165,7 @@ EMOperator::EMOperator(vector<ParFiniteElementSpace*> feSpaces_
 
   VVbForm->AddDomainIntegrator( new MixedScalarMassIntegrator(one));
   VVbForm->Assemble();
-  VVbForm->FormRectangularSystemMatrix(empty_tdofs, empty_tdofs, OpVVb);
+  VVbForm->FormRectangularSystemMatrix(ess_Vtdof, empty_tdofs, OpVVb);
 
 /*
     ParMixedBilinearForm  *VbBForm=NULL;//Mixed components
@@ -182,7 +189,6 @@ EMOperator::EMOperator(vector<ParFiniteElementSpace*> feSpaces_
 
   //Row 2
   EMSolverOp->SetBlock(2,0, OpVbJ_T,    1.0);
-
 
   //Row 3
   EMSolverOp->SetBlock(3,3, OpVV.Ptr(),  1.0);

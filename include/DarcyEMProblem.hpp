@@ -437,7 +437,7 @@ void DarcyEMProblem::Set_Solver(bool verbosity){
   solver = new FGMRESSolver(MPI_COMM_WORLD);
   solver->SetAbsTol(atol);
   solver->SetRelTol(rtol);
-  solver->SetKDim(100);
+ // solver->SetKDim(100);
   solver->SetMaxIter(maxIter);
   solver->SetPrintLevel(verbosity);
   if(darcyEMOp != NULL) solver->SetOperator(*darcyEMOp);

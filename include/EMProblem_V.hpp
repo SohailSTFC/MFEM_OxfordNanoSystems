@@ -20,7 +20,7 @@ using namespace std;
 // The equation system is:
 //  Div( sigma*Grad(Vb) ) = F
 //
-class EMOperator : public Operator{
+class EMOperatorV : public Operator{
   private:
     int Dim;
     bool PA=true;
@@ -37,7 +37,7 @@ class EMOperator : public Operator{
 
     BlockOperator *EMSolverOp=NULL;
 
-    Array<int> ess_Jtdof, ess_Btdof, ess_Vtdof;
+    Array<int> ess_Vtdof;
     Array<int> BlockOffsets;
     Array<Array<int> *> ess_bdr;
 
@@ -50,14 +50,15 @@ class EMOperator : public Operator{
     void AssembleLinearForms();
 
   public:
-    EMOperator(vector<ParFiniteElementSpace*> feSpaces_
-               , Array<int> BOffsets
+    EMOperatorV(vector<ParFiniteElementSpace*> feSpaces_
                , Array<Array<int>*> ess_bdrs
                , int dim
                , MemoryType mt
 			   , int OpSize);
 
-    ~EMOperator();
+    ~EMOperatorV();
+
+    void ReassembleSystem();
 
     virtual void Mult(const Vector &k, Vector &y) const;
 };
@@ -65,8 +66,7 @@ class EMOperator : public Operator{
 //
 // The class constructor
 //
-EMOperator::EMOperator(vector<ParFiniteElementSpace*> feSpaces_
-                     , Array<int> BOffsets
+EMOperatorV::EMOperatorV(vector<ParFiniteElementSpace*> feSpaces_
 					 , Array<Array<int>*> ess_bdrs
 		             , int dim
                      , MemoryType mt
@@ -83,37 +83,20 @@ EMOperator::EMOperator(vector<ParFiniteElementSpace*> feSpaces_
 
   //Make the Bilinear forms from the FESpaces
   VVForm = new ParBilinearForm(feSpaces[0]);
-
-  BlockOffsets = Array<int>(BOffsets);
   ess_bdr = Array<Array<int>*>(ess_bdrs);
 
-  feSpaces[0]->GetEssentialTrueDofs(*ess_bdr[0], ess_Jtdof);
-
-  //Set the Vectors (zero them)
-  b_vec.Update(BlockOffsets);      b_vec = 0.0;
-
-  //Linear Form assembly
-  AssembleLinearForms();
-
   //Bilinear Forms
-  Array<int> empty_tdofs;
-
   VVForm->AddDomainIntegrator( new DiffusionIntegrator(one) );
-  VVForm->Assemble();
-  VVForm->FormSystemMatrix(ess_Vtdof, OpVV);
 
-  //Block Operator/Matrix
-  EMSolverOp = new BlockOperator(BlockOffsets);
-
-  //Row 0
-  EMSolverOp->SetBlock(0,0, OpVV.Ptr(), 1.0);
+  //Assemble the linear system
+  ReassembleSystem();
 }
 
 
 //
 // The class destructor
 //
-EMOperator::~EMOperator(){
+EMOperatorV::~EMOperatorV(){
   for(int I=0; I<LForms.size();   I++) delete LForms[I];
   for(int I=0; I<feSpaces.size(); I++) delete feSpaces[I];
   LForms.clear();
@@ -123,7 +106,7 @@ EMOperator::~EMOperator(){
 //
 // Assemble the linear forms
 //
-void EMOperator::AssembleLinearForms(){
+void EMOperatorV::AssembleLinearForms(){
   for(int I=0; I<LForms.size(); I++){
     if(L_ints[I] != 0){
       LForms[I]->Assemble();
@@ -134,11 +117,44 @@ void EMOperator::AssembleLinearForms(){
   }
 };
 
+//
+// Reassembles all the operators
+// used for AMR
+//
+void EMOperatorV::ReassembleSystem(){
+  Array<int> BOfSets_tmp(feSpaces.size()+1);
+  BOfSets_tmp[0] = 0;
+  for(int I=0; I<feSpaces.size(); I++) BOfSets_tmp[I+1] = feSpaces[I]->GetTrueVSize();
+  BOfSets_tmp.PartialSum();
+  BlockOffsets = Array<int>(BOfSets_tmp);
+
+  feSpaces[0]->GetEssentialTrueDofs(*ess_bdr[0], ess_Vtdof);
+
+  //Set the Vectors (zero them)
+  b_vec.Update(BlockOffsets); b_vec = 0.0;
+
+  //Linear Form assembly
+  AssembleLinearForms();
+
+  //Bilinear Forms
+  Array<int> empty_tdofs;
+  VVForm->Update();
+  VVForm->Assemble();
+  VVForm->FormSystemMatrix(ess_Vtdof, OpVV);
+
+  //Block Operator/Matrix
+  if(EMSolverOp != NULL) delete EMSolverOp;
+  EMSolverOp = new BlockOperator(BlockOffsets);
+
+  //Row 0
+  EMSolverOp->SetBlock(0,0, OpVV.Ptr(), 1.0);
+};
+
 
 //
 // The residual calculation
 //
-void EMOperator::Mult(const Vector &k, Vector &y) const
+void EMOperatorV::Mult(const Vector &k, Vector &y) const
 {
   //Calculate the unconstrained residual
   EMSolverOp->Mult(k,y);

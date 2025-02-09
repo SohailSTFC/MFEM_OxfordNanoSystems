@@ -177,7 +177,8 @@ int main(int argc, char *argv[])
 
    applyDirchValues(*JBV[0], tb_vec.GetBlock(0), ess_Jtdof);
    applyDirchValues(*JBV[2], tb_vec.GetBlock(2), ess_Vtdof);
-
+   applyDirchValues(*JBV[0], tx_vec.GetBlock(0), ess_Jtdof);
+   applyDirchValues(*JBV[2], tx_vec.GetBlock(2), ess_Vtdof);
 
    // 10. Build  the Problem-Operator
    //     class
@@ -185,7 +186,7 @@ int main(int argc, char *argv[])
    int PSize=0;
    for(int I=0; I<feSpaces.size(); I++) PSize += feSpaces[I]->GetTrueVSize();
    MemoryType mt = device.GetMemoryType();
-   EMOperator sampleProb(feSpaces, trueBOffsets, BDR_markers, dim, mt, PSize);
+   EMOperatorJBV sampleProb(feSpaces, trueBOffsets, BDR_markers, dim, mt, PSize);
 
 
    // 11. Build the Non-linear 

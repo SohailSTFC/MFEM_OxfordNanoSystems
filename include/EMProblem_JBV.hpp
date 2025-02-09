@@ -18,11 +18,11 @@ using namespace std;
 // residual and Jacobian
 //
 // The equation system is:
-//  J + sigma*Grad(Vb) + (U X B) = 0
+//  J + sigma*Grad(V) + (U X B) = 0
 //  Curl(B) - mu J = 0
 //  Div( J ) = 0
 //
-class EMOperator : public Operator{
+class EMOperatorJBV : public Operator{
   private:
     int Dim;
     bool PA=true;
@@ -56,14 +56,14 @@ class EMOperator : public Operator{
     void AssembleLinearForms();
 
   public:
-    EMOperator(vector<ParFiniteElementSpace*> feSpaces_
+    EMOperatorJBV(vector<ParFiniteElementSpace*> feSpaces_
                , Array<int> BOffsets
                , Array<Array<int>*> ess_bdrs
                , int dim
                , MemoryType mt
 			   , int OpSize);
 
-    ~EMOperator();
+    ~EMOperatorJBV();
 
     virtual void Mult(const Vector &k, Vector &y) const;
 };
@@ -71,7 +71,7 @@ class EMOperator : public Operator{
 //
 // The class constructor
 //
-EMOperator::EMOperator(vector<ParFiniteElementSpace*> feSpaces_
+EMOperatorJBV::EMOperatorJBV(vector<ParFiniteElementSpace*> feSpaces_
                      , Array<int> BOffsets
 					 , Array<Array<int>*> ess_bdrs
 		             , int dim
@@ -92,7 +92,7 @@ EMOperator::EMOperator(vector<ParFiniteElementSpace*> feSpaces_
   BBForm = new ParBilinearForm(feSpaces[1]);; 
 
   JBForm = new ParMixedBilinearForm(feSpaces[0],feSpaces[1]);
-  BJForm = new ParMixedBilinearForm(feSpaces[1],feSpaces[0]);
+  BJForm = new ParMixedBilinearForm(feSpaces[0],feSpaces[1]);
   JVForm = new ParMixedBilinearForm(feSpaces[0],feSpaces[2]);
 
   BlockOffsets = Array<int>(BOffsets);
@@ -113,20 +113,19 @@ EMOperator::EMOperator(vector<ParFiniteElementSpace*> feSpaces_
   JJForm->Assemble();
   JJForm->FormSystemMatrix(ess_Jtdof, OpJJ);
 
-  BBForm->AddDomainIntegrator( new MixedVectorWeakCurlIntegrator(one) );
+  BBForm->AddDomainIntegrator(new CurlCurlIntegrator(one));
   BBForm->Assemble();
   BBForm->FormSystemMatrix(empty_tdofs, OpBB);
 
 ////////// ess_Jtdof, ess_Vtdof, empty_tdofs
-
   //Mixed Bilinear Forms
 //  JBForm->AddDomainIntegrator( new VectorFEDivergenceIntegrator);
 //  JBForm->Assemble();
 //  JBForm->FormRectangularSystemMatrix(ess_Jtdof, empty_tdofs, OpJB);
 
-  BJForm->AddDomainIntegrator( new MixedVectorMassIntegrator(one));
+  BJForm->AddDomainIntegrator( new MixedVectorWeakCurlIntegrator(mu));
   BJForm->Assemble();
-  BJForm->FormRectangularSystemMatrix(empty_tdofs, ess_Jtdof, OpBJ);
+  BJForm->FormRectangularSystemMatrix(ess_Jtdof, empty_tdofs, OpBJ);
 
   JVForm->AddDomainIntegrator( new VectorFEDivergenceIntegrator);
   JVForm->Assemble();
@@ -134,7 +133,7 @@ EMOperator::EMOperator(vector<ParFiniteElementSpace*> feSpaces_
 
   //Transpose certain operators
   OpJV_T = new TransposeOperator(OpJV.Ptr());
-  OpBJ_T = new TransposeOperator(OpBJ.Ptr());
+  //OpBJ_T = new TransposeOperator(OpBJ.Ptr());
 
   //Block Operator/Matrix
   EMSolverOp = new BlockOperator(BlockOffsets);
@@ -146,7 +145,7 @@ EMOperator::EMOperator(vector<ParFiniteElementSpace*> feSpaces_
 
   //Row 1
   EMSolverOp->SetBlock(1,1, OpBB.Ptr(), 1.0);
-  EMSolverOp->SetBlock(1,0, OpBJ_T,     1.0);
+  EMSolverOp->SetBlock(1,0, OpBJ.Ptr(),-1.0);
 
   //Row 2
   EMSolverOp->SetBlock(2,0, OpJV.Ptr(),-1.0);
@@ -156,7 +155,7 @@ EMOperator::EMOperator(vector<ParFiniteElementSpace*> feSpaces_
 //
 // The class destructor
 //
-EMOperator::~EMOperator(){
+EMOperatorJBV::~EMOperatorJBV(){
   for(int I=0; I<LForms.size();   I++) delete LForms[I];
   for(int I=0; I<feSpaces.size(); I++) delete feSpaces[I];
   LForms.clear();
@@ -166,7 +165,7 @@ EMOperator::~EMOperator(){
 //
 // Assemble the linear forms
 //
-void EMOperator::AssembleLinearForms(){
+void EMOperatorJBV::AssembleLinearForms(){
   for(int I=0; I<LForms.size(); I++){
     if(L_ints[I] != 0){
       LForms[I]->Assemble();
@@ -180,7 +179,7 @@ void EMOperator::AssembleLinearForms(){
 //
 // The residual calculation
 //
-void EMOperator::Mult(const Vector &k, Vector &y) const
+void EMOperatorJBV::Mult(const Vector &k, Vector &y) const
 {
   EMSolverOp->Mult(k,y);
 };

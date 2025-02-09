@@ -37,7 +37,14 @@ int main(int argc, char *argv[])
    bool visualization = 1;
    bool verbose = (myid == 0);
 
-   OptionsParser args(argc, argv);
+   //Boundary condition arrays
+   Array<int> dbcs;
+   Array<int> nbcs;
+   Vector dbcv;
+   Vector nbcv;
+
+
+   OptionsParser args(argc, argv); 
    args.AddOption(&mesh_file, "-m", "--mesh",
                   "Mesh file to use.");
    args.AddOption(&ref_levels, "-r", "--refine",
@@ -52,6 +59,19 @@ int main(int argc, char *argv[])
    args.AddOption(&device_config, "-d", "--device",
                   "Device configuration string, see Device::Configure().");
 
+   //Boundary condition surface
+   //from command line arguments
+   //Dirch BCs (V)
+   args.AddOption(&dbcs, "-dbcs", "--dirichlet-bc-surf",
+                  "Dirichlet Boundary Condition Surfaces");
+   args.AddOption(&dbcv, "-dbcv", "--dirichlet-bc-vals",
+                  "Dirichlet Boundary Condition Values");
+
+   //Neumann BCs (Dirch on J)
+   args.AddOption(&nbcs, "-nbcs", "--neumann-bc-surf",
+                  "Neumann Boundary Condition Surfaces");
+   args.AddOption(&nbcv, "-nbcv", "--neumann-bc-vals",
+                  "Neumann Boundary Condition Values");
   args.Parse();
   if (!args.Good()and(verbose)) args.PrintUsage(cout);
   if (!args.Good()) return 1;
@@ -66,7 +86,8 @@ int main(int argc, char *argv[])
    //    can handle triangular, quadrilateral, tetrahedral, hexahedral, surface
    //    and volume meshes with the same code.
    Mesh *mesh = new Mesh(mesh_file, 1, 1);
-   int dim = mesh->Dimension();
+   int dim  = mesh->Dimension();
+   int sdim = mesh->SpaceDimension();
 
    // 5. Refine the serial mesh on all processors to increase the resolution. In
    //    this example we do 'ref_levels' of uniform refinement. We choose
@@ -87,33 +108,48 @@ int main(int argc, char *argv[])
 
    // 7. Define a parallel finite element space on the parallel mesh. Here we
    //    use the Hybrid finite elements of the specified order.
-   FiniteElementCollection *V_coll (new H1_FECollection(order, dim));
+   //    Two subsequent Orders are used to estimate error
+   FiniteElementCollection *V_c_coll (new H1_FECollection(order,  dim));//Coarse p-Order-element
+   FiniteElementCollection *V_f_coll (new H1_FECollection(order+1,dim));//Fine p-Order-element
 
-   vector<ParFiniteElementSpace*> feSpaces;
-   feSpaces.push_back(new ParFiniteElementSpace(pmesh, V_coll, 1));
+   vector<ParFiniteElementSpace*> feSpacesF, feSpacesC;
+   feSpacesC.push_back(new ParFiniteElementSpace(pmesh, V_c_coll, 1));
+   feSpacesF.push_back(new ParFiniteElementSpace(pmesh, V_f_coll, 1));
 
-   Array<int> BOffsets(2), trueBOffsets(2);
-   BOffsets[0] = 0;
-   for(int I=0; I<feSpaces.size(); I++) BOffsets[I+1] = feSpaces[I]->GetVSize();
-   BOffsets.PartialSum();
+   //Fine space block offsets
+   Array<int> BOffsetsF(2), trueBOffsetsF(2);
+   BOffsetsF[0] = 0;
+   for(int I=0; I<feSpacesF.size(); I++) BOffsetsF[I+1] = feSpacesF[I]->GetVSize();
+   BOffsetsF.PartialSum();
 
-   trueBOffsets[0] = 0;
-   for(int I=0; I<feSpaces.size(); I++) trueBOffsets[I+1] = feSpaces[I]->GetTrueVSize();
-   trueBOffsets.PartialSum();
+   trueBOffsetsF[0] = 0;
+   for(int I=0; I<feSpacesF.size(); I++) trueBOffsetsF[I+1] = feSpacesF[I]->GetTrueVSize();
+   trueBOffsetsF.PartialSum();
+
+   //Coarse space Offsets
+   Array<int> BOffsetsC(2), trueBOffsetsC(2);
+   BOffsetsC[0] = 0;
+   for(int I=0; I<feSpacesC.size(); I++) BOffsetsC[I+1] = feSpacesC[I]->GetVSize();
+   BOffsetsC.PartialSum();
+
+   trueBOffsetsC[0] = 0;
+   for(int I=0; I<feSpacesC.size(); I++) trueBOffsetsC[I+1] = feSpacesC[I]->GetTrueVSize();
+   trueBOffsetsC.PartialSum();
 
 
    // 9. Set the boundary
    //    and initial conditions
    //
    //
-   int nTags=feSpaces[0]->GetMesh()->bdr_attributes.Max();
-   Array<Array<int>*> BDR_markers(feSpaces.size()), BDR_tdofs(feSpaces.size());
-   Array<int> V_BDRs(feSpaces[0]->GetMesh()->bdr_attributes.Max());
+   int nTagsF=feSpacesF[0]->GetMesh()->bdr_attributes.Max();
+   int nTagsC=feSpacesC[0]->GetMesh()->bdr_attributes.Max();
+   Array<Array<int>*> BDR_markers(feSpacesF.size());
+   Array<int> V_BDRs(nTagsF);
 
    V_BDRs=0;
    V_BDRs[0]=1;
-   if(nTags>1) V_BDRs[1]=1;
-   if(nTags>2) V_BDRs[2]=1;
+   if(nTagsF>1) V_BDRs[1]=1;
+   if(nTagsF>2) V_BDRs[2]=1;
 
    BDR_markers[0] = &V_BDRs;
 
@@ -121,38 +157,40 @@ int main(int argc, char *argv[])
    // 8. Define Gridfunctions and initial conditions, BCS and 
    //
    //
-   BlockVector x_vec(BOffsets), tx_vec(trueBOffsets), tb_vec(trueBOffsets);
+   BlockVector x_vec(BOffsetsF), tx_vec(trueBOffsetsF), tb_vec(trueBOffsetsF);
    vector<ParGridFunction*> V;
    vector<string> VarNames;
  
-   for(int I=0; I<feSpaces.size(); I++){
+   for(int I=0; I<feSpacesF.size(); I++){
      V.push_back(new ParGridFunction);
-     V[I]->MakeRef(feSpaces[I], x_vec.GetBlock(I), 0);
+     V[I]->MakeRef(feSpacesF[I], x_vec.GetBlock(I), 0);
      V[I]->Distribute(&(tx_vec.GetBlock(I)));
    }
 
    VarNames.push_back("V-H1-Potential");
+   x_vec  = 0.0;
    tx_vec = 0.0;
    tb_vec = 0.0;
-   tx_vec.GetBlock(0) = 0.1;
-
+   tx_vec.GetBlock(0) = 0.2;
+   x_vec.GetBlock(0)  = 0.2;
 
    //Set the BCs from the coefficient funcs
    ConstantCoefficient ThreeS(3.0);
    ConstantCoefficient ZeroS(0.0);
 
-   Array<int> V_BDRs_tmp(nTags);
+   Array<int> V_BDRs_tmp(nTagsF);
    V_BDRs_tmp = 0;
-   if(nTags>1) V_BDRs_tmp[1]=1;
-   if(nTags>2) V_BDRs_tmp[2]=1;
+   if(nTagsF>1) V_BDRs_tmp[1]=1;
+   if(nTagsF>2) V_BDRs_tmp[2]=1;
    V[0]->ProjectBdrCoefficient(ThreeS,V_BDRs_tmp);
    V_BDRs_tmp = 0;
    V_BDRs_tmp[0]=1;
    V[0]->ProjectBdrCoefficient(ZeroS,V_BDRs_tmp);
 
    Array<int> ess_Jtdof, ess_Vtdof;
-   feSpaces[0]->GetEssentialTrueDofs(*BDR_markers[0], ess_Vtdof);
+   feSpacesF[0]->GetEssentialTrueDofs(*BDR_markers[0], ess_Vtdof);
 
+   applyDirchValues(*V[0], tb_vec.GetBlock(0), ess_Vtdof);
    applyDirchValues(*V[0], tx_vec.GetBlock(0), ess_Vtdof);
 
 
@@ -160,24 +198,71 @@ int main(int argc, char *argv[])
    //     class
    //
    int PSize=0;
-   for(int I=0; I<feSpaces.size(); I++) PSize += feSpaces[I]->GetTrueVSize();
+   for(int I=0; I<feSpacesF.size(); I++) PSize += feSpacesF[I]->GetTrueVSize();
    MemoryType mt = device.GetMemoryType();
-   EMOperator sampleProb(feSpaces, trueBOffsets, BDR_markers, dim, mt, PSize);
+   EMOperatorV sampleProbF(feSpacesF, BDR_markers, dim, mt, PSize); //Fine problem
+  // EMOperatorV sampleProbC(feSpacesC, BDR_markers, dim, mt, PSize); //Coarse problem
 
-   // 11. Build the Non-linear 
-   //     system solver
+   //11.1 Build an error estimator
+   //     Using-estimator from
+   //     example 6p
    //
-   double rel_tol = 1.0e-15;
-   double abs_tol = 1.0e-12;
-   int maxIter = 500;
-   //FGMRESSolver *solver = new FGMRESSolver(MPI_COMM_WORLD);
-   MINRESSolver *solver = new MINRESSolver(MPI_COMM_WORLD);
-   solver->SetAbsTol(abs_tol);
-   solver->SetRelTol(rel_tol);
-   solver->SetMaxIter(maxIter);
-   solver->SetPrintLevel(verbose);
-   solver->SetOperator(sampleProb);
-   solver->Mult(tb_vec, tx_vec);
+   L2_FECollection flux_fec(order, dim);
+   ParFiniteElementSpace flux_fes(pmesh, &flux_fec, sdim);
+   FiniteElementCollection *smooth_flux_fec = NULL;
+   ParFiniteElementSpace *smooth_flux_fes = NULL;
+
+   // A possible option for the smoothed flux space: H1^dim space
+   // the AMR technique minimises the L2-norm of a particular grid
+   // functional, the way it does this is via a method of projection
+   // thus access is needed to Bilinear form that lives inside the
+   // problem class
+   //
+/*
+   smooth_flux_fec = new H1_FECollection(order, dim);
+   smooth_flux_fes = new ParFiniteElementSpace(pmesh, smooth_flux_fec, dim);
+ //  LpErrorEstimator estimator(2, Coefficient &coef, GridFunction &sol); 
+ //  L2ZienkiewiczZhuEstimator estimator(*integ, V[0], flux_fes, *smooth_flux_fes);
+
+
+   //The refiner used here uses a thresholding strategy 
+   //The strategy here is to refine elements with errors larger than a
+   //fraction of the maximum element error.
+   ThresholdRefiner refiner(estimator);
+   refiner.SetTotalErrorFraction(0.7);
+*/
+
+
+   //Construct and AMR loop
+   int Max_AMR_its=1;
+   for(int AMR_it=0; AMR_it<Max_AMR_its; AMR_it++){
+     //Reassemble the System
+     sampleProbF.ReassembleSystem();
+
+     //Build the solver and
+     //solve the linear system
+     double rel_tol = 1.0e-15;
+     double abs_tol = 1.0e-12;
+     int maxIter = 500;
+         /**FGMRESSolver *solver = new FGMRESSolver(MPI_COMM_WORLD);**/
+     MINRESSolver *solver = new MINRESSolver(MPI_COMM_WORLD);
+     solver->SetAbsTol(abs_tol);
+     solver->SetRelTol(rel_tol);
+     solver->SetMaxIter(maxIter);
+     solver->SetPrintLevel(verbose);
+     solver->SetOperator(sampleProbF);
+     solver->Mult(tb_vec, tx_vec);
+     delete solver; //delete once solved
+
+     //Apply the refiner to
+     //the finite element mesh
+   //  refiner.Apply(*pmesh);
+
+
+     //Update the feSpaces and grid functions
+     //so that the problem is resolved
+   }
+
 
    //12. Output and visualise the data
    //

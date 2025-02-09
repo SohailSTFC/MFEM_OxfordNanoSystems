@@ -7,14 +7,10 @@
 using namespace mfem;
 using namespace std;
 
-/*
-void readEssBCsFromFile(Array<Array<int> *>     ess_bdr_m //BC markers
-                      , Array<Array<function>*> funcs     //BC functions
-					  , string Fname){
-
-};*/
-
-
+//
+// Projects a vector of BDR function Coefficients (using the current
+// form of MFEM) on a vector of GridFunctions
+//
 
 //
 // Applies the value at the boundary from a reference Vector/GridFunction

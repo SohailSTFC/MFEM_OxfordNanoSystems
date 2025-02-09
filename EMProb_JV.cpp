@@ -39,6 +39,12 @@ int main(int argc, char *argv[])
    bool visualization = 1;
    bool verbose = (myid == 0);
 
+   //Boundary condition arrays
+   Array<int> dbcs;
+   Array<int> nbcs;
+   Vector dbcv;
+
+
    OptionsParser args(argc, argv);
    args.AddOption(&mesh_file, "-m", "--mesh",
                   "Mesh file to use.");
@@ -53,6 +59,18 @@ int main(int argc, char *argv[])
                   "--no-partial-assembly", "Enable Partial Assembly.");
    args.AddOption(&device_config, "-d", "--device",
                   "Device configuration string, see Device::Configure().");
+
+   //Boundary condition surface
+   //from command line arguments
+   //Dirch BCs (V)
+   args.AddOption(&dbcs, "-dbcs", "--dirichlet-bc-surf",
+                  "Dirichlet Boundary Condition Surfaces");
+   args.AddOption(&dbcv, "-dbcv", "--dirichlet-bc-vals",
+                  "Dirichlet Boundary Condition Values");
+
+   //Neumann BCs (Dirch on J)
+   args.AddOption(&nbcs, "-nbcs", "--neumann-bc-surf",
+                  "Neumann Boundary Condition Surfaces");
 
   args.Parse();
   if (!args.Good()and(verbose)) args.PrintUsage(cout);
@@ -82,14 +100,14 @@ int main(int argc, char *argv[])
    //    parallel mesh is defined, the serial mesh can be deleted.
    ParMesh *pmesh = new ParMesh(MPI_COMM_WORLD, *mesh);
    delete mesh;
-   {
+   /*{
       int par_ref_levels = 3;
       for (int l = 0; l < par_ref_levels; l++) pmesh->UniformRefinement();
-   }
+   }*/
 
    // 7. Define a parallel finite element space on the parallel mesh. Here we
    //    use the Hybrid finite elements of the specified order.
-   FiniteElementCollection *J_coll (new RT_FECollection(order, dim));
+   FiniteElementCollection *J_coll (new RT_FECollection(order+1, dim));
    FiniteElementCollection *V_coll (new H1_FECollection(order, dim));
 
    vector<ParFiniteElementSpace*> feSpaces;
@@ -105,30 +123,7 @@ int main(int argc, char *argv[])
    for(int I=0; I<feSpaces.size(); I++) trueBOffsets[I+1] = feSpaces[I]->GetTrueVSize();
    trueBOffsets.PartialSum();
 
-   // 8. Set the boundary
-   //    and initial conditions
-   //
-   //
-   int nTags=feSpaces[0]->GetMesh()->bdr_attributes.Max();
-   Array<Array<int>*> BDR_markers(feSpaces.size());
-   Array<int> J_BDRs(feSpaces[0]->GetMesh()->bdr_attributes.Max());
-   Array<int> V_BDRs(feSpaces[1]->GetMesh()->bdr_attributes.Max());
-
-   J_BDRs=1;
-   V_BDRs=0;
-
-   if(nTags>1) J_BDRs[0]=0;
-   if(nTags>1) J_BDRs[1]=0;
-   if(nTags>2) J_BDRs[2]=0;
-
-   V_BDRs[0]=1;
-   if(nTags>1) V_BDRs[1]=1;
-   if(nTags>2) V_BDRs[2]=1;
-
-   BDR_markers[0] = &J_BDRs;
-   BDR_markers[1] = &V_BDRs;
-
-   // 9. Define Gridfunctions and initial conditions, BCS and 
+   // 8. Define Gridfunctions and initial conditions, BCS and 
    //
    //
    BlockVector x_vec(BOffsets), tx_vec(trueBOffsets), tb_vec(trueBOffsets);
@@ -143,34 +138,75 @@ int main(int argc, char *argv[])
    VarNames.push_back("J_Field");
    VarNames.push_back("V_H1_Potential");
 
+   // 9. Set the boundary
+   //    and initial conditions
+   //
+   //
+   int nTags=feSpaces[0]->GetMesh()->bdr_attributes.Max(); 
+   Array<Array<int>*> BDR_markers(feSpaces.size());
+   Array<int> J_BDRs(nTags), V_BDRs(nTags), V_BDRs_tmp(nTags);
+ 
+ 
+    x_vec.GetBlock(1) = 0.2;
+ 
+ 
+   if(dbcv.Size() != dbcs.Size()) //Some Exit command
+
+   V_BDRs=0;
+   J_BDRs = 0;
+   if((nbcs.Size()==0)and(dbcs.Size()==0)){//Default BC's
+     J_BDRs=1;
+     V_BDRs=0;
+
+     if(nTags>1) J_BDRs[0]=0;
+     if(nTags>1) J_BDRs[1]=0;
+     if(nTags>2) J_BDRs[2]=0;
+
+     V_BDRs[0]=1;
+     if(nTags>1) V_BDRs[1]=1;
+     if(nTags>2) V_BDRs[2]=1;
+   }
+
+   for(unsigned I=0; I<dbcs.Size(); I++){
+     if((dbcs[I]<0)or(dbcs[I]>nTags)) cout << "Error Dirchelet BC out of bounds" << endl;
+     if((dbcs[I]<0)or(dbcs[I]>nTags)) continue;
+     V_BDRs_tmp = 0;
+     V_BDRs[dbcs[I]-1] = 1;
+     V_BDRs_tmp[dbcs[I]-1] = 1;
+     ConstantCoefficient UDC(dbcv[I]);
+     JV[0]->ProjectBdrCoefficient(UDC,V_BDRs_tmp);
+   }
+
+   Vector ZeroVec(dim);
+   ZeroVec = (0.0, 0.0, 0.0);
+   for(unsigned J=0; J<nbcs.Size(); J++){
+     if((nbcs[J]<0)or(nbcs[J]>nTags)) cout << "Error Neumann BC out of bounds" << endl;
+     if((nbcs[J]<0)or(nbcs[J]>nTags)) continue;
+     V_BDRs_tmp = 0;
+     J_BDRs[dbcs[J]-1] = 1;
+     V_BDRs_tmp[dbcs[J]-1] = 1;
+     VectorConstantCoefficient UNV(ZeroVec);
+     JV[1]->ProjectBdrCoefficient(UNV,V_BDRs_tmp);
+   }
+
+   x_vec  = 0.0;
    tx_vec = 0.0;
    tb_vec = 0.0;
-   tx_vec.GetBlock(1) = 0.1;
-   
-   //Set the BCs from the coefficient funcs
-   Vector ZeroVec(dim); ZeroVec = 0.0;
-   VectorConstantCoefficient ZeroV(ZeroVec);
-   ConstantCoefficient ThreeS(3.0);
-   ConstantCoefficient ZeroS(0.0);
-
-   JV[0]->ProjectBdrCoefficient(ZeroV,*BDR_markers[0]);
-
-   Array<int> V_BDRs_tmp(nTags);
-   V_BDRs_tmp = 0;
-   if(nTags>1) V_BDRs_tmp[1]=1;
-   if(nTags>2) V_BDRs_tmp[2]=1;
-   JV[1]->ProjectBdrCoefficient(ThreeS,V_BDRs_tmp);
-   V_BDRs_tmp = 0;
-   V_BDRs_tmp[0]=1;
-   JV[1]->ProjectBdrCoefficient(ZeroS,V_BDRs_tmp);
-
+   tx_vec.GetBlock(1) = 0.2;
+   x_vec.GetBlock(1) = 0.2;
+   BDR_markers[0] = &J_BDRs;
+   BDR_markers[1] = &V_BDRs;
 
    Array<int> ess_Jtdof, ess_Vtdof;
    feSpaces[0]->GetEssentialTrueDofs(*BDR_markers[0], ess_Jtdof);
    feSpaces[1]->GetEssentialTrueDofs(*BDR_markers[1], ess_Vtdof);
 
+   applyDirchValues(*JV[0], tb_vec.GetBlock(0), ess_Jtdof);
+   applyDirchValues(*JV[1], tb_vec.GetBlock(1), ess_Vtdof);
    applyDirchValues(*JV[0], tx_vec.GetBlock(0), ess_Jtdof);
    applyDirchValues(*JV[1], tx_vec.GetBlock(1), ess_Vtdof);
+   applyDirchValues(*JV[0], x_vec.GetBlock(0),  ess_Jtdof);
+   applyDirchValues(*JV[1], x_vec.GetBlock(1),  ess_Vtdof);
 
    // 10. Build  the Problem-Operator
    //     class
@@ -178,22 +214,22 @@ int main(int argc, char *argv[])
    int PSize=0;
    for(int I=0; I<feSpaces.size(); I++) PSize += feSpaces[I]->GetTrueVSize();
    MemoryType mt = device.GetMemoryType();
-   EMOperator sampleProb(feSpaces, trueBOffsets, BDR_markers, dim, mt, PSize);
+   EMOperatorJV sampleProb(feSpaces, trueBOffsets, BDR_markers, dim, mt, PSize);
 
    // 11. Build the Non-linear 
    //     system solver
    //
    double rel_tol = 1.0e-15;
    double abs_tol = 1.0e-12;
-   int maxIter = 500;
-   //FGMRESSolver *solver = new FGMRESSolver(MPI_COMM_WORLD);
-   MINRESSolver *solver = new MINRESSolver(MPI_COMM_WORLD);
+   int maxIter = 2500;
+   FGMRESSolver *solver = new FGMRESSolver(MPI_COMM_WORLD);
+  // MINRESSolver *solver = new MINRESSolver(MPI_COMM_WORLD);
    solver->SetAbsTol(abs_tol);
    solver->SetRelTol(rel_tol);
    solver->SetMaxIter(maxIter);
    solver->SetPrintLevel(verbose);
    solver->SetOperator(sampleProb);
-  // solver->SetPreconditioner(sampleProb.Precon());
+ //solver->SetPreconditioner(sampleProb.Precon());
    solver->Mult(tb_vec, tx_vec);
 
    //12. Output and visualise the data

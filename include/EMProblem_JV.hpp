@@ -25,7 +25,7 @@ using namespace std;
 //
 // Problem class
 //
-class EMOperator : public Operator{
+class EMOperatorJV : public Operator{
   private:
     int Dim;
     bool PA=true;
@@ -35,11 +35,11 @@ class EMOperator : public Operator{
     vector<ParLinearForm*>  LForms;  //Applied forces
     vector<int>             L_ints;  //Integrated L-Forms
 
-    ParBilinearForm      *JJForm=NULL, *VVForm=NULL; //Bilinear type forms
+    ParBilinearForm      *JJForm=NULL; //Bilinear type forms
     ParMixedBilinearForm *JVForm=NULL; //Mixed components
 
     //Matrix Operators 
-    OperatorPtr OpJJ, OpVV, OpJV;
+    OperatorPtr OpJJ, OpJV;
     HypreParMatrix *JJ_mat=NULL, *JV_mat=NULL;
     TransposeOperator *OpJV_T;
 
@@ -59,14 +59,14 @@ class EMOperator : public Operator{
     void AssembleLinearForms();
 
   public:
-    EMOperator(vector<ParFiniteElementSpace*> feSpaces_
+    EMOperatorJV(vector<ParFiniteElementSpace*> feSpaces_
                , Array<int> BOffsets
-               , Array<Array<int>*> ess_bdrs
+               , Array<Array<int>*> ess_bdrs 
                , int dim
                , MemoryType mt
 			   , int OpSize);
 
-    ~EMOperator();
+    ~EMOperatorJV();
 
     Solver& Precon() const {return *EMPreconOp;};
 
@@ -76,14 +76,14 @@ class EMOperator : public Operator{
 //
 // The class constructor
 //
-EMOperator::EMOperator(vector<ParFiniteElementSpace*> feSpaces_
+EMOperatorJV::EMOperatorJV(vector<ParFiniteElementSpace*> feSpaces_
                      , Array<int> BOffsets
 					 , Array<Array<int>*> ess_bdrs
 		             , int dim
                      , MemoryType mt
 		             , int OpSize): Operator(OpSize),
 		             mu(1.0), sigma(1.0), one(1.0)
-{	
+{
   Dim = dim;
   feSpaces.clear();
   LForms.clear();
@@ -94,7 +94,6 @@ EMOperator::EMOperator(vector<ParFiniteElementSpace*> feSpaces_
 
   //Make the Bilinear forms from the FESpaces
   JJForm = new ParBilinearForm(feSpaces[0]);
-  VVForm = new ParBilinearForm(feSpaces[1]);
   JVForm = new ParMixedBilinearForm(feSpaces[0],feSpaces[1]);
 
   BlockOffsets = Array<int>(BOffsets);
@@ -115,15 +114,10 @@ EMOperator::EMOperator(vector<ParFiniteElementSpace*> feSpaces_
   JJForm->Assemble();
   JJForm->FormSystemMatrix(ess_Jtdof, OpJJ);
 
-  VVForm->AddDomainIntegrator( new DiffusionIntegrator(sigma) );
-  VVForm->Assemble();
-  VVForm->FormSystemMatrix(ess_Vtdof, OpVV);
-
-
   //Mixed Bilinear Forms
-  JVForm->AddDomainIntegrator( new VectorFEDivergenceIntegrator);
+  JVForm->AddDomainIntegrator( new VectorFEDivergenceIntegrator	(sigma));
   JVForm->Assemble();
-  JVForm->FormRectangularSystemMatrix(ess_Jtdof, ess_Vtdof, OpJV);
+  JVForm->FormRectangularSystemMatrix(ess_Jtdof,ess_Vtdof, OpJV);
 
   //Transpose certain operators
   OpJV_T = new TransposeOperator(OpJV.Ptr());
@@ -133,18 +127,19 @@ EMOperator::EMOperator(vector<ParFiniteElementSpace*> feSpaces_
 
   //Row 0
   EMSolverOp->SetBlock(0,0, OpJJ.Ptr(), 1.0);
-  EMSolverOp->SetBlock(0,1, OpJV_T,    -1.0);
+  //EMSolverOp->SetBlock(0,1, OpJV.Ptr(),-1.0);
+  EMSolverOp->SetBlock(0,1, OpJV_T,-1.0);
 
   //Row 1
-  EMSolverOp->SetBlock(1,1, OpVV.Ptr(),-1.0);
-//  EMSolverOp->SetBlock(1,0, OpJV.Ptr(),-1.0);
+ // EMSolverOp->SetBlock(1,0, OpJV_T, -1.0);
+  EMSolverOp->SetBlock(1,0, OpJV.Ptr(), -1.0);
 }
 
 
 //
 // The class destructor
 //
-EMOperator::~EMOperator(){
+EMOperatorJV::~EMOperatorJV(){
   for(int I=0; I<LForms.size();   I++) delete LForms[I];
   for(int I=0; I<feSpaces.size(); I++) delete feSpaces[I];
   LForms.clear();
@@ -154,7 +149,7 @@ EMOperator::~EMOperator(){
 //
 // Assemble the linear forms
 //
-void EMOperator::AssembleLinearForms(){
+void EMOperatorJV::AssembleLinearForms(){
   for(int I=0; I<LForms.size(); I++){
     if(L_ints[I] != 0){
       LForms[I]->Assemble();
@@ -169,9 +164,8 @@ void EMOperator::AssembleLinearForms(){
 //
 // The residual calculation
 //
-void EMOperator::Mult(const Vector &k, Vector &y) const
+void EMOperatorJV::Mult(const Vector &k, Vector &y) const
 {
   EMSolverOp->Mult(k,y);
 };
 #endif
-

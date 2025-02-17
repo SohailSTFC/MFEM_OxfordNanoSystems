@@ -25,15 +25,13 @@ class SchurrPrecon : public Operator
 	// block preconditioner for a 2 x 2 
     // block matrix that needs to be inverted
 
-    SchurrPrecon(const Operator *D_, const Operator *U_
-	           , const Operator *L_, const Vector M_)
-			: Operator(D_->Height(), D_->Width())
+    SchurrPrecon( const Operator *U_, const Operator *L_, const Vector M_)
+			: Operator(L_->Height(), U_->Width())
     {
       //  MFEM_VERIFY(M_->Height() == Ainv_->Height());
       //  MFEM_VERIFY(M_->Width() == Ainv_->Width());
 		L = L_;
 		U = U_;
-		D = D_;
         Array<int> ess_tdof_empty;
         InvM = new OperatorJacobiSmoother(M_, ess_tdof_empty);
     };
@@ -42,18 +40,16 @@ class SchurrPrecon : public Operator
     //y = P x = (D - L InvM U) x
     void Mult(const Vector &x, Vector &y) const
     { 
-	  Vector D_x       ( D->Height() );
       Vector U_x       ( U->Height() );
       Vector InvM_U_x  ( U->Height() );
-      Vector L_InvM_U_x( D->Height() );
+      Vector L_InvM_U_x( L->Height() );
 
-      D->Mult(x,D_x);
+
       U->Mult(x,U_x);
       InvM->Mult(U_x,InvM_U_x);
       L->Mult(InvM_U_x,L_InvM_U_x);
 
       y = 0.0;
-      y.Add( 1.00, D_x);
       y.Add(-1.00, L_InvM_U_x);
     };
 
@@ -110,14 +106,14 @@ class DarcyEMProblem
     Vector Md_PA;
 
     //Shared pointer to the solver
-    FGMRESSolver* solver=NULL;
+    IterativeSolver* solver=NULL;
 
     //The Preconditioning objects
     HypreParMatrix *MinvBt = NULL;
     HypreParVector *Md = NULL;
     HypreParMatrix *S = NULL;
     Solver *invM=NULL;
-	IterativeSolver *invS=NULL;
+    IterativeSolver *invS=NULL;
 
     //Boundary Conditions
     vector<vector<double>> DirchVal;       //Dirchelet value of BC
@@ -255,7 +251,7 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
   JJForm = new ParBilinearForm(fespaceRT);
   JVForm = new ParMixedBilinearForm(fespaceRT, fespaceL);
   VJForm = new ParMixedBilinearForm(fespaceRT, fespaceL);
-  VVForm = new ParBilinearForm(fespaceL);
+//  VVForm = new ParBilinearForm(fespaceL);
 
 
   //Set the assembly level
@@ -276,21 +272,21 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
   VJForm->AddDomainIntegrator(new VectorFEDivergenceIntegrator);
   VJForm->Assemble();
 
-  VVForm->Assemble();
+//  VVForm->Assemble();
 
   //Set the BCs and finalize the bilinear forms
   JJForm->FormSystemMatrix( ess_tdof_J, opM);
   VJForm->FormRectangularSystemMatrix( ess_tdof_J, ess_tdof_empty, opB);
   JVForm->FormRectangularSystemMatrix( ess_tdof_empty, ess_tdof_v, opC);
   Bt = new TransposeOperator(opB.Ptr());
-  VVForm->FormSystemMatrix( ess_tdof_v, opD);
+//  VVForm->FormSystemMatrix( ess_tdof_v, opD);
 
   //Set the block matrix operator
   darcyEMOp = new BlockOperator(block_trueOffsets);
   darcyEMOp->SetBlock(0,0, opM.Ptr());
   darcyEMOp->SetBlock(0,1, Bt, -1.0);
   darcyEMOp->SetBlock(1,0, opC.Ptr(), -1.0);
-  darcyEMOp->SetBlock(1,1, opD.Ptr());
+//  darcyEMOp->SetBlock(1,1, opD.Ptr());
 };
 
 //Sets the natural and essential boundary
@@ -414,8 +410,8 @@ void DarcyEMProblem::BuildPreconditioner()
    invM = new OperatorJacobiSmoother(invMd, ess_tdof_empty);
    invM->iterative_mode = false;
 
-   SchurrComp = new SchurrPrecon(opD.Ptr(), Bt, opC.Ptr(), invMd);
-   invS = new MINRESSolver(MPI_COMM_WORLD);
+   SchurrComp = new SchurrPrecon(Bt, opC.Ptr(), invMd);
+   invS = new SLISolver(MPI_COMM_WORLD);
    invS->SetOperator(*SchurrComp);
    invS->SetAbsTol(1.0e-12);
    invS->SetRelTol(1.0e-07);
@@ -434,10 +430,9 @@ void DarcyEMProblem::Set_Solver(bool verbosity){
   int maxIter(500);
   double rtol(1.e-6);
   double atol(1.e-10);
-  solver = new FGMRESSolver(MPI_COMM_WORLD);
+  solver = new MINRESSolver(MPI_COMM_WORLD);
   solver->SetAbsTol(atol);
   solver->SetRelTol(rtol);
- // solver->SetKDim(100);
   solver->SetMaxIter(maxIter);
   solver->SetPrintLevel(verbosity);
   if(darcyEMOp != NULL) solver->SetOperator(*darcyEMOp);
@@ -456,9 +451,9 @@ void DarcyEMProblem::Solve(bool verbosity){
     chrono.Stop();
     if (verbosity)
     {
-      std::cout << "GMRES ended in "                      << solver->GetNumIterations()
+      std::cout << "MINRES ended in "                     << solver->GetNumIterations()
                 << " iterations with a residual norm of " << solver->GetFinalNorm() << ".\n";
-      std::cout << "GMRES solver took "                   << chrono.RealTime()      << "s. \n";
+      std::cout << "MINRES solver took "                  << chrono.RealTime()      << "s. \n";
     }
   }else{
     if (verbosity) std::cout << "Error Darcy operator not built" << ".\n";

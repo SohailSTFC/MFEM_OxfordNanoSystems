@@ -51,11 +51,8 @@ int main(int argc, char *argv[])
    const char *mesh_file = "mesh/OxNanoSys0.mesh";
    int ref_levels = -1;
    int order = 1;
-   bool par_format = false;
    bool pa = false;
-   const char *device_config = "ceed-cpu"; //"cpu";//"ceed-cpu";
-   bool visualization = 1;
-   bool adios2 = false;
+   const char *device_config = "cpu"; //"cpu";//"ceed-cpu";
 
    OptionsParser args(argc, argv);
    args.AddOption(&mesh_file, "-m", "--mesh",
@@ -64,19 +61,11 @@ int main(int argc, char *argv[])
                   "Number of times to refine the mesh uniformly.");
    args.AddOption(&order, "-o", "--order",
                   "Finite element order (polynomial degree).");
-   args.AddOption(&par_format, "-pf", "--parallel-format", "-sf",
-                  "--serial-format",
-                  "Format to use when saving the results for VisIt.");
    args.AddOption(&pa, "-pa", "--partial-assembly", "-no-pa",
                   "--no-partial-assembly", "Enable Partial Assembly.");
    args.AddOption(&device_config, "-d", "--device",
                   "Device configuration string, see Device::Configure().");
-   args.AddOption(&visualization, "-vis", "--visualization", "-no-vis",
-                  "--no-visualization",
-                  "Enable or disable GLVis visualization.");
-   args.AddOption(&adios2, "-adios2", "--adios2-streams", "-no-adios2",
-                  "--no-adios2-streams",
-                  "Save data using adios2 streams.");
+
    args.Parse();
    if (!args.Good())
    {

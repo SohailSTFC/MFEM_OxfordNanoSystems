@@ -204,7 +204,7 @@ int main(int argc, char *argv[])
   // EMOperatorV sampleProbC(feSpacesC, BDR_markers, dim, mt, PSize); //Coarse problem
 
    //11.1 Build an error estimator
-   //     Using-estimator from
+   //     Using zz-estimator from
    //     example 6p
    //
    L2_FECollection flux_fec(order, dim);

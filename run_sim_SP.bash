@@ -20,15 +20,11 @@
 # Date  : 31/01/2025
 
 
-module load openmpi-gcc7/4.0.4-cuda11.2
-export OMP_NUM_THREADS=32
-export OMP_PLACES=cores
-export OMP_PROC_BIND=close
-
 ulimit -s 10240
-mpirun -np 2 ./mainEMSim -m mesh/OxNanoSys0.mesh \
-                         - \
+mpirun -np 1 ./EMProb_JVVb -m "mesh/OxNanoSys0.mesh"  \ #Input mesh
+                           -r  3                      \ #Refinement level
+                           -o  2                      \ #Polynomial Order
+                           -nbcs  \ #Neumann BC boundary surfaces
+                           -dbcs  \ #Dirchlet BC boundary surfaces
+                           -dbcv    #Dirchlet BC boundary values
 
-# option 1 (-m mesh/OxNanoSys0.mesh): specifies the mesh directory and file
-# option 2 ()
-#

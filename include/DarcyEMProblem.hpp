@@ -46,7 +46,7 @@ class DarcyEMProblem
     mutable BlockVector tx_vec, tb_vec;
 
     // Form block operators (operates Matrix multiplication)
-	// (This aggregates the block components of the forms)
+    // (This aggregates the block components of the forms)
     BlockOperator               *darcyEMOp = NULL;
     BlockDiagonalPreconditioner *darcyEMPr = NULL;
 

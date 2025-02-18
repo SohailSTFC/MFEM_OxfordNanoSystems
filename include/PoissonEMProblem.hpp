@@ -42,11 +42,15 @@ class poissonEMproblem
     mutable BlockVector x_vec, b_vec;
     mutable BlockVector tx_vec, tb_vec;
 
+    // Form block operators (operates Matrix multiplication)
+    // (This aggregates the block components of the forms)
+    BlockOperator               *poissonEMOp = NULL;
+    BlockDiagonalPreconditioner *poissonEMPr = NULL;
 
     //The Block hypre matrices and Transposes for Jacobian
     TransposeOperator *Bt = NULL;
-    HypreParMatrix *matM=NULL, *matB=NULL, *matC=NULL;
-    OperatorPtr opM, opB, opC;
+    HypreParMatrix *matM=NULL;
+    OperatorPtr opM;
 
     //Shared pointer to the solver
     IterativeSolver* solver=NULL;
@@ -314,6 +318,6 @@ poissonEMproblem::~poissonEMproblem(){
    if(VForm       != NULL) delete VForm;
    if(poissonEMOp != NULL) delete poissonEMOp;
    if(poissonEMpr != NULL) delete poissonEMpr;
-   if(JJForm      != NULL) delete VVForm;
+   if(VVForm      != NULL) delete VVForm;
 };
 #endif

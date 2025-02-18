@@ -1,5 +1,5 @@
-#ifndef DARCYEMPROBLEM_HPP
-#define DARCYEMPROBLEM_HPP 
+#ifndef poissonEMprOBLEM_HPP
+#define poissonEMprOBLEM_HPP 
 
 #include "mfem.hpp"
 #include <fstream>
@@ -14,14 +14,13 @@ using namespace mfem;
 //  The problem class
 //
 //
-class DarcyEMProblem
+class poissonEMproblem
 {
   protected:
     //Problem dimension
     int DIM;
 
     //Finite element spaces
-    ParFiniteElementSpace *fespaceRT=NULL; //Raviart Thomas elements
     ParFiniteElementSpace *fespaceL=NULL;  //Lagrange finite element space
 
     //Block Matrix structure offsets
@@ -33,22 +32,15 @@ class DarcyEMProblem
 
     //The Bilinear forms of the block components
     // (Jacobian) (Assuming a symmetric Saddle point problem)
-    ParBilinearForm      *JJForm=NULL;
-    ParMixedBilinearForm *JVForm=NULL, *VJForm=NULL;
+    ParBilinearForm      *VVForm=NULL;
 
     //The linear forms of the block components
     // (residual)
-    ParLinearForm   *JForm=NULL;
     ParLinearForm   *VForm=NULL;
 
     //The complete block vectors
     mutable BlockVector x_vec, b_vec;
     mutable BlockVector tx_vec, tb_vec;
-
-    // Form block operators (operates Matrix multiplication)
-	// (This aggregates the block components of the forms)
-    BlockOperator               *darcyEMOp = NULL;
-    BlockDiagonalPreconditioner *darcyEMPr = NULL;
 
 
     //The Block hypre matrices and Transposes for Jacobian
@@ -84,8 +76,7 @@ class DarcyEMProblem
     vector<ParGridFunction*> Fields;
 
     //The constructor
-    DarcyEMProblem(ParFiniteElementSpace *f1, ParFiniteElementSpace *f2
-	             , double sig, MemoryType deviceMT, int dim);
+    poissonEMproblem(ParFiniteElementSpace *f1, double sig, MemoryType deviceMT, int dim);
 
     //Build and set a Preconditioner for the solver
     void BuildPreconditioner();
@@ -100,7 +91,7 @@ class DarcyEMProblem
     void SetFields();
 
 	//The destructor
-    ~DarcyEMProblem();
+    ~poissonEMproblem();
 };
 
 
@@ -113,22 +104,16 @@ class DarcyEMProblem
 //The constructor
 //Constructs the problem and sets-up
 //residual+jacobian operators/Forms
-DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
-                             , ParFiniteElementSpace *f2L
+poissonEMproblem::poissonEMproblem(ParFiniteElementSpace *fL
                              , double sig, MemoryType deviceMT, int dim)
 : sigma(sig)
 {
   DIM = dim;
-  fespaceRT = new ParFiniteElementSpace(*f1RT);
-  fespaceL  = new ParFiniteElementSpace(*f2L);
-
-  HYPRE_BigInt dimR = fespaceRT->GlobalTrueVSize();
+  fespaceL  = new ParFiniteElementSpace(*fL);
   HYPRE_BigInt dimW = fespaceL->GlobalTrueVSize();
 
   std::cout << "***********************************************************\n";
-  std::cout << "dim(R) = " << dimR << "\n";
   std::cout << "dim(W) = " << dimW << "\n";
-  std::cout << "dim(R+W) = " << dimR + dimW << "\n";
   std::cout << "***********************************************************\n";
 
   // Get the block offsets and true block offsets
@@ -136,19 +121,16 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
   // and matrix operators
   Array<int> bofs(3); // number of variables + 1
   bofs[0] = 0;
-  bofs[1] = fespaceRT->GetVSize();
-  bofs[2] = fespaceL->GetVSize();
+  bofs[1] = fespaceL->GetVSize();
   bofs.PartialSum();
 
   Array<int> btofs(3); // number of variables + 1
   btofs[0] = 0;
-  btofs[1] = fespaceRT->TrueVSize();
-  btofs[2] = fespaceL->TrueVSize();
+  btofs[1] = fespaceL->TrueVSize();
   btofs.PartialSum();
  
   block_offsets     = Array<int>(bofs);
   block_trueOffsets = Array<int>(btofs);
-
 
   // 10. Define the parallel grid function and parallel linear forms, solution
   //     vector and rhs.
@@ -170,7 +152,7 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
   //
   //v-Linear-form of the equation J + grad v = Je
   VForm = new ParLinearForm;
-  VForm->Update(fespaceRT, b_vec.GetBlock(0), 0);
+  VForm->Update(fespaceL, b_vec.GetBlock(0), 0);
   VForm->AddDomainIntegrator(new VectorFEDomainLFIntegrator(fcoeff));
   VForm->AddBoundaryIntegrator(new VectorFEBoundaryFluxLFIntegrator(fnatcoeff));
   VForm->Assemble();
@@ -178,67 +160,36 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
   VForm->ParallelAssemble(tb_vec.GetBlock(0));
   tb_vec.GetBlock(0).SyncAliasMemory(tb_vec);
 
-  //J-Linear-form of the equation  div J = q
-  JForm = new ParLinearForm;
-  JForm->Update(fespaceL, b_vec.GetBlock(1), 0);
-  JForm->AddDomainIntegrator(new DomainLFIntegrator(gcoeff));
-  JForm->Assemble();
-  JForm->SyncAliasMemory(b_vec);
-  JForm->ParallelAssemble(tb_vec.GetBlock(1));
-  tb_vec.GetBlock(1).SyncAliasMemory(tb_vec);
-
-
   //
   // The Bilinear forms (matrix/jacobian forms)
   //
 
   //The Bilinear block forms
-  JJForm = new ParBilinearForm(fespaceRT);
-  JVForm = new ParMixedBilinearForm(fespaceRT, fespaceL);
-  VJForm = new ParMixedBilinearForm(fespaceRT, fespaceL);
+  VVForm = new ParBilinearForm(fespaceL);
 
   //Setting the boundary conditions
   SetBCsArrays();
-  Array<int> ess_tdof_empty;
 
   //Set the integrators/integral forms and assemble the block matrices/bilinear forms
-  JJForm->AddDomainIntegrator(new VectorFEMassIntegrator(k));
-  JJForm->Assemble();
-
-  JVForm->AddDomainIntegrator(new VectorFEDivergenceIntegrator);
-  JVForm->Assemble();
-
-  VJForm->AddDomainIntegrator(new VectorFEDivergenceIntegrator);
-  VJForm->Assemble();
+  VVForm->AddDomainIntegrator(new VectorFEMassIntegrator(k));
+  VVForm->Assemble();
 
   //Set the BCs and finalize the bilinear forms (PA)
-  JJForm->FormSystemMatrix( ess_tdof_J, opM);
-  VJForm->FormRectangularSystemMatrix( ess_tdof_J, ess_tdof_empty, opB);
-  JVForm->FormRectangularSystemMatrix( ess_tdof_empty, ess_tdof_v, opC);
-  Bt = new TransposeOperator(opB.Ptr());
+  VVForm->FormSystemMatrix(ess_bdr_v, opM);
 
   //Set the block matrix operator
-  darcyEMOp = new BlockOperator(block_trueOffsets);
-  darcyEMOp->SetBlock(0,0, opM.Ptr());
-  darcyEMOp->SetBlock(0,1, Bt, -1.0);
-  darcyEMOp->SetBlock(1,0, opC.Ptr(), -1.0);
+  poissonEMOp = new BlockOperator(block_trueOffsets);
+  poissonEMOp->SetBlock(0,0, opM.Ptr());
 };
 
 //Sets the natural and essential boundary
 //conditions
-void DarcyEMProblem::SetBCsArrays(){
+void poissonEMproblem::SetBCsArrays(){
   //Essential boundary condition tags
-  ess_bdr_J = Array<int>(fespaceRT->GetMesh()->bdr_attributes.Max());
   ess_bdr_v = Array<int>(fespaceL->GetMesh()->bdr_attributes.Max());
 
   //initialise the arrays
-  ess_bdr_J = 1;
   ess_bdr_v = 0;
-
-  //fixed J
-  ess_bdr_J[0] = 0;
-  ess_bdr_J[1] = 0;
-  ess_bdr_J[2] = 0;
 
   //fixed v
   ess_bdr_v[0] = 1;
@@ -246,24 +197,13 @@ void DarcyEMProblem::SetBCsArrays(){
   ess_bdr_v[2] = 1;
 
   //Find the True Dofs
-  fespaceRT->GetEssentialTrueDofs(ess_bdr_J, ess_tdof_J);
   fespaceL->GetEssentialTrueDofs(ess_bdr_v, ess_tdof_v);
-
-  cout << setw(10) << "RT elements: " << setw(10) << ess_tdof_J.Size() << "\n";
   cout << setw(10) << "H1 elements: " << setw(10) << ess_tdof_v.Size() << "\n";
 
   //The Dirchelet BC values
   vector<double> DirchVal_tmp;
   DirchVal.clear();
   DirchVal_tmp.clear();
-  
-  //J-Field BC-values
-  DirchVal_tmp.push_back(0.00); // N/A
-  DirchVal_tmp.push_back(0.00); // N/A
-  DirchVal_tmp.push_back(0.00); // N/A
-  DirchVal_tmp.push_back(0.00); // n.J = 0
-  DirchVal_tmp.push_back(0.00); // N/A
-  DirchVal.push_back(DirchVal_tmp);
 
   //v-Field BC-values
   DirchVal_tmp[0] = 0.00; // Fixed v = c
@@ -276,55 +216,34 @@ void DarcyEMProblem::SetBCsArrays(){
 };
 
 //Set the BCs by setting the solution vectors and
-void DarcyEMProblem::SetFieldBCs(){
+void poissonEMproblem::SetFieldBCs(){
   //Set the boundary Solution function for
   //the current field
-  int nJ_tags = fespaceRT->GetMesh()->bdr_attributes.Max();
   int nv_tags = fespaceL->GetMesh()->bdr_attributes.Max();
-
-  cout << setw(10) << "RT element Tags: " << setw(10) << nJ_tags << "\n";
   cout << setw(10) << "H1 element Tags: " << setw(10) << nv_tags << "\n";
 
   tb_vec = 0.0;
   b_vec  = 0.0;
   tx_vec = 0.0;
   x_vec  = 0.0;
-  x_vec.GetBlock(1) = 0.2;
-  tx_vec.GetBlock(1) = 0.2;
+  x_vec = 0.2;
+  tx_vec= 0.2;
 
-  //Set the J-Field BCs by looping over the
+  //Set the V-Field BCs by looping over the
   //active boundaries
-  cout << setw(10) << "RT elements: " << setw(10) << ess_tdof_J.Size() << "\n";
-  for(int I=0; I<nJ_tags; I++){
-    int K = ess_bdr_J[I];
-    if(K == 1){ //Checks if boundary is active
-      Array<int> ess_tdof, ess_bdr_tmp(nJ_tags);
-      ess_bdr_tmp = 0;
-      ess_bdr_tmp[I] = 1;
-      fespaceRT->GetEssentialTrueDofs(ess_bdr_tmp, ess_tdof);
-      cout << setw(10) << I << setw(10) << ess_tdof.Size() << "\n";
-      x_vec.GetBlock(0).SetSubVector( ess_tdof, DirchVal[0][I] );
-      b_vec.GetBlock(0).SetSubVector( ess_tdof, DirchVal[0][I] );
-      tx_vec.GetBlock(0).SetSubVector( ess_tdof, DirchVal[0][I] );
-      tb_vec.GetBlock(0).SetSubVector( ess_tdof, DirchVal[0][I] );
-    }
-  }
-
-  //Set the J-Field BCs by looping over the
-  //active boundaries
-  cout << setw(10) << "H1 elements: " << setw(10) << ess_tdof_v.Size() << "\n";
+  cout << setw(10) << "H1 elements: " << setw(10) << ess_tdof_J.Size() << "\n";
   for(int I=0; I<nv_tags; I++){
-    int K = ess_bdr_v[I];
+    int K = ess_bdr_J[I];
     if(K == 1){ //Checks if boundary is active
       Array<int> ess_tdof, ess_bdr_tmp(nv_tags);
       ess_bdr_tmp = 0;
       ess_bdr_tmp[I] = 1;
       fespaceL->GetEssentialTrueDofs(ess_bdr_tmp, ess_tdof);
       cout << setw(10) << I << setw(10) << ess_tdof.Size() << "\n";
-      x_vec.GetBlock(1).SetSubVector( ess_tdof, DirchVal[1][I] );
-      b_vec.GetBlock(1).SetSubVector( ess_tdof, DirchVal[1][I] );
-      tx_vec.GetBlock(1).SetSubVector( ess_tdof, DirchVal[1][I] );
-      tb_vec.GetBlock(1).SetSubVector( ess_tdof, DirchVal[1][I] );
+      x_vec.SetSubVector( ess_tdof, DirchVal[0][I] );
+      b_vec.SetSubVector( ess_tdof, DirchVal[0][I] );
+      tx_vec.SetSubVector( ess_tdof, DirchVal[0][I] );
+      tb_vec.SetSubVector( ess_tdof, DirchVal[0][I] );
     }
   }
 };
@@ -333,54 +252,37 @@ void DarcyEMProblem::SetFieldBCs(){
 //Builds a preconditioner needed to
 //accelerate the Darcy problem solver (Optional)
 
-void DarcyEMProblem::BuildPreconditioner()
+void poissonEMproblem::BuildPreconditioner()
 {
   //Construct the a Schurr Complement
   //Gauss-Seidel block Preconditioner
   matM = static_cast<HypreParMatrix*>( opM.Ptr() );
-  matB = static_cast<HypreParMatrix*>( opB.Ptr() );
-  matC = static_cast<HypreParMatrix*>( opC.Ptr() );
-  (*matB) *= -1.0; 
-  (*matC) *= -1.0; 
+  invM = new HypreBoomerAMG(*matM);
+  invM->SetInterpolation(6);
+  invM->SetRelaxType(6);
 
-  Md = new HypreParVector(MPI_COMM_WORLD, matM->GetGlobalNumRows(),matM->GetRowStarts());
-  matM->GetDiag(*Md);
-  MinvBt = matC->Transpose();
-  MinvBt->InvScaleRows(*Md);
-  matS = ParMult(matB, MinvBt);
-  invM = new HypreDiagScale(*matM);
-  invS = new HypreBoomerAMG(*matS);
-
-  invS->SetInterpolation(6);
-  invS->SetCoarsening(9);
-  invS->SetRelaxType(6);
-  invS->SetCycleNumSweeps(2,2);
-  invS->SetCycleType(2);
-
-  darcyEMPr = new BlockDiagonalPreconditioner(block_trueOffsets);
-  darcyEMPr->SetDiagonalBlock(0,invM);
-  darcyEMPr->SetDiagonalBlock(1,invS);
+  poissonEMpr->SetDiagonalBlock(0,invM);
 }
 
 //Sets the linear/non-linear solver
 //for the Darcy problem
-void DarcyEMProblem::Set_Solver(bool verbosity){
-  int maxIter(750);
-  double rtol(1.e-7);
+void poissonEMproblem::Set_Solver(bool verbosity){
+  int maxIter(500);
+  double rtol(1.e-8);
   double atol(1.e-10);
   solver = new MINRESSolver(MPI_COMM_WORLD);
   solver->SetAbsTol(atol);
   solver->SetRelTol(rtol);
   solver->SetMaxIter(maxIter);
   solver->SetPrintLevel(verbosity);
-  if(darcyEMOp != NULL) solver->SetOperator(*darcyEMOp);
-  if(darcyEMPr != NULL) solver->SetPreconditioner(*darcyEMPr);
+  if(poissonEMOp != NULL) solver->SetOperator(*poissonEMOp);
+  if(poissonEMpr != NULL) solver->SetPreconditioner(*poissonEMpr);
 };
 
  //Solves the system of equations
 //for the Darcy problem
-void DarcyEMProblem::Solve(bool verbosity){
-  if(darcyEMOp != NULL){
+void poissonEMproblem::Solve(bool verbosity){
+  if(poissonEMOp != NULL){
     StopWatch chrono;
     chrono.Clear();
     chrono.Start();
@@ -400,26 +302,18 @@ void DarcyEMProblem::Solve(bool verbosity){
 
 //Setting-up/unpacking the fields for the Darcy problem
 //these are needed before post-processing
-void DarcyEMProblem::SetFields(){
-  FieldNames.push_back("Current");
-  Fields.push_back(new ParGridFunction);
-  Fields[0]->MakeRef(fespaceRT, x_vec.GetBlock(0), 0);
-  Fields[0]->Distribute(&(tx_vec.GetBlock(0)));
-
+void poissonEMproblem::SetFields(){
   FieldNames.push_back("Potential");
   Fields.push_back(new ParGridFunction);
-  Fields[1]->MakeRef(fespaceL, x_vec.GetBlock(1), 0);
-  Fields[1]->Distribute(&(tx_vec.GetBlock(1)));
+  Fields[0]->MakeRef(fespaceL, x_vec.GetBlock(0), 0);
+  Fields[0]->Distribute(&(tx_vec.GetBlock(0)));
 };
 
 
-DarcyEMProblem::~DarcyEMProblem(){
-   if(JForm     != NULL) delete JForm;
-   if(VForm     != NULL) delete VForm;
-   if(darcyEMOp != NULL) delete darcyEMOp;
-   if(darcyEMPr != NULL) delete darcyEMPr;
-   if(JJForm    != NULL) delete JJForm;
-   if(JVForm    != NULL) delete JVForm;
-   if(VJForm    != NULL) delete VJForm;
+poissonEMproblem::~poissonEMproblem(){
+   if(VForm       != NULL) delete VForm;
+   if(poissonEMOp != NULL) delete poissonEMOp;
+   if(poissonEMpr != NULL) delete poissonEMpr;
+   if(JJForm      != NULL) delete VVForm;
 };
 #endif

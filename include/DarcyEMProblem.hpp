@@ -11,54 +11,6 @@ using namespace mfem;
 #include "BoundaryAndInitialSolution.hpp"
 //
 //
-//  Custom block preconditioner(s)
-//
-//
-class SchurrPrecon : public Operator
-{
-  private:
-    const Operator *L, *U, *D;
-    Solver *InvM;
-
-  public:
-    // This is a custom schurr complement 
-	// block preconditioner for a 2 x 2 
-    // block matrix that needs to be inverted
-
-    SchurrPrecon( const Operator *U_, const Operator *L_, const Vector M_)
-			: Operator(L_->Height(), U_->Width())
-    {
-      //  MFEM_VERIFY(M_->Height() == Ainv_->Height());
-      //  MFEM_VERIFY(M_->Width() == Ainv_->Width());
-		L = L_;
-		U = U_;
-        Array<int> ess_tdof_empty;
-        InvM = new OperatorJacobiSmoother(M_, ess_tdof_empty);
-    };
-
-
-    //y = P x = (D - L InvM U) x
-    void Mult(const Vector &x, Vector &y) const
-    { 
-      Vector U_x       ( U->Height() );
-      Vector InvM_U_x  ( U->Height() );
-      Vector L_InvM_U_x( L->Height() );
-
-
-      U->Mult(x,U_x);
-      InvM->Mult(U_x,InvM_U_x);
-      L->Mult(InvM_U_x,L_InvM_U_x);
-
-      y = 0.0;
-      y.Add(-1.00, L_InvM_U_x);
-    };
-
-    void SetOperator(const Operator &op){D = &op;};
-};
-
-
-//
-//
 //  The problem class
 //
 //
@@ -81,7 +33,7 @@ class DarcyEMProblem
 
     //The Bilinear forms of the block components
     // (Jacobian) (Assuming a symmetric Saddle point problem)
-    ParBilinearForm      *JJForm=NULL, *VVForm=NULL;
+    ParBilinearForm      *JJForm=NULL;
     ParMixedBilinearForm *JVForm=NULL, *VJForm=NULL;
 
     //The linear forms of the block components
@@ -101,19 +53,17 @@ class DarcyEMProblem
 
     //The Block hypre matrices and Transposes for Jacobian
     TransposeOperator *Bt = NULL;
-    OperatorPtr opM, opB, opC, opD;
-    Operator *SchurrComp=NULL;
-    Vector Md_PA;
+    HypreParMatrix *matM=NULL, *matB=NULL, *matC=NULL;
+    OperatorPtr opM, opB, opC;
 
     //Shared pointer to the solver
     IterativeSolver* solver=NULL;
 
     //The Preconditioning objects
-    HypreParMatrix *MinvBt = NULL;
+    HypreParMatrix *MinvBt = NULL, *matS = NULL;;
     HypreParVector *Md = NULL;
-    HypreParMatrix *S = NULL;
     Solver *invM=NULL;
-    IterativeSolver *invS=NULL;
+    HypreBoomerAMG *invS=NULL;
 
     //Boundary Conditions
     vector<vector<double>> DirchVal;       //Dirchelet value of BC
@@ -129,11 +79,11 @@ class DarcyEMProblem
   public:
     //The fields (Needed for postprocessing)
     //Made public for external access (not a great solution
-	//but hey it works)
+    //but hey it works)
     vector<std::string>      FieldNames;
-	vector<ParGridFunction*> Fields;
+    vector<ParGridFunction*> Fields;
 
-	//The constructor
+    //The constructor
     DarcyEMProblem(ParFiniteElementSpace *f1, ParFiniteElementSpace *f2
 	             , double sig, MemoryType deviceMT, int dim);
 
@@ -181,13 +131,9 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
   std::cout << "dim(R+W) = " << dimR + dimW << "\n";
   std::cout << "***********************************************************\n";
 
-  //Setting the boundary conditions
-  SetBCsArrays();
-
-
   // Get the block offsets and true block offsets
   // to construct the block structured vectors
-  //and matrix operators
+  // and matrix operators
   Array<int> bofs(3); // number of variables + 1
   bofs[0] = 0;
   bofs[1] = fespaceRT->GetVSize();
@@ -214,7 +160,7 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
 
   // 9. Define the coefficients, analytical solution, and rhs of the PDE.
   // the coefficients and functions
-  ConstantCoefficient k(1.0);
+  ConstantCoefficient k(1.0/sigma);
   VectorFunctionCoefficient fcoeff(dim, fFun);
   FunctionCoefficient fnatcoeff(f_natural);
   FunctionCoefficient gcoeff(gFun);
@@ -245,22 +191,15 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
   //
   // The Bilinear forms (matrix/jacobian forms)
   //
-  Array<int> ess_tdof_empty;
 
   //The Bilinear block forms
   JJForm = new ParBilinearForm(fespaceRT);
   JVForm = new ParMixedBilinearForm(fespaceRT, fespaceL);
   VJForm = new ParMixedBilinearForm(fespaceRT, fespaceL);
-//  VVForm = new ParBilinearForm(fespaceL);
 
-
-  //Set the assembly level
-/*  AssemblyLevel assembly_level = AssemblyLevel::PARTIAL;
-  JJForm->SetAssemblyLevel(assembly_level);
-  JVForm->SetAssemblyLevel(assembly_level);
-  VJForm->SetAssemblyLevel(assembly_level);
-  VVForm->SetAssemblyLevel(assembly_level);*/
-
+  //Setting the boundary conditions
+  SetBCsArrays();
+  Array<int> ess_tdof_empty;
 
   //Set the integrators/integral forms and assemble the block matrices/bilinear forms
   JJForm->AddDomainIntegrator(new VectorFEMassIntegrator(k));
@@ -272,21 +211,17 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
   VJForm->AddDomainIntegrator(new VectorFEDivergenceIntegrator);
   VJForm->Assemble();
 
-//  VVForm->Assemble();
-
-  //Set the BCs and finalize the bilinear forms
+  //Set the BCs and finalize the bilinear forms (PA)
   JJForm->FormSystemMatrix( ess_tdof_J, opM);
   VJForm->FormRectangularSystemMatrix( ess_tdof_J, ess_tdof_empty, opB);
   JVForm->FormRectangularSystemMatrix( ess_tdof_empty, ess_tdof_v, opC);
   Bt = new TransposeOperator(opB.Ptr());
-//  VVForm->FormSystemMatrix( ess_tdof_v, opD);
 
   //Set the block matrix operator
   darcyEMOp = new BlockOperator(block_trueOffsets);
   darcyEMOp->SetBlock(0,0, opM.Ptr());
   darcyEMOp->SetBlock(0,1, Bt, -1.0);
   darcyEMOp->SetBlock(1,0, opC.Ptr(), -1.0);
-//  darcyEMOp->SetBlock(1,1, opD.Ptr());
 };
 
 //Sets the natural and essential boundary
@@ -297,11 +232,13 @@ void DarcyEMProblem::SetBCsArrays(){
   ess_bdr_v = Array<int>(fespaceL->GetMesh()->bdr_attributes.Max());
 
   //initialise the arrays
-  ess_bdr_J = 0;
+  ess_bdr_J = 1;
   ess_bdr_v = 0;
 
   //fixed J
-  ess_bdr_J[3] = 1;
+  ess_bdr_J[0] = 0;
+  ess_bdr_J[1] = 0;
+  ess_bdr_J[2] = 0;
 
   //fixed v
   ess_bdr_v[0] = 1;
@@ -359,7 +296,7 @@ void DarcyEMProblem::SetFieldBCs(){
   //active boundaries
   cout << setw(10) << "RT elements: " << setw(10) << ess_tdof_J.Size() << "\n";
   for(int I=0; I<nJ_tags; I++){
-	int K = ess_bdr_J[I];
+    int K = ess_bdr_J[I];
     if(K == 1){ //Checks if boundary is active
       Array<int> ess_tdof, ess_bdr_tmp(nJ_tags);
       ess_bdr_tmp = 0;
@@ -377,7 +314,7 @@ void DarcyEMProblem::SetFieldBCs(){
   //active boundaries
   cout << setw(10) << "H1 elements: " << setw(10) << ess_tdof_v.Size() << "\n";
   for(int I=0; I<nv_tags; I++){
-	int K = ess_bdr_v[I];
+    int K = ess_bdr_v[I];
     if(K == 1){ //Checks if boundary is active
       Array<int> ess_tdof, ess_bdr_tmp(nv_tags);
       ess_bdr_tmp = 0;
@@ -398,37 +335,35 @@ void DarcyEMProblem::SetFieldBCs(){
 
 void DarcyEMProblem::BuildPreconditioner()
 {
-   //Construct the a Schurr Complement
-   //Gauss-Seidel block Preconditioner
-   Md_PA.SetSize(fespaceRT->GetTrueVSize());
-   JJForm->AssembleDiagonal(Md_PA);
-   auto Md_host = Md_PA.HostRead();
-   Vector invMd(Md_PA.Size());
-   for (int i=0; i<Md_PA.Size(); ++i) invMd(i) = 1.0/Md_host[i];
+  //Construct the a Schurr Complement
+  //Gauss-Seidel block Preconditioner
+  matM = static_cast<HypreParMatrix*>( opM.Ptr() );
+  matB = static_cast<HypreParMatrix*>( opB.Ptr() );
+  matC = static_cast<HypreParMatrix*>( opC.Ptr() );
+  (*matB) *= -1.0; 
+  (*matC) *= -1.0; 
 
-   Array<int> ess_tdof_empty;
-   invM = new OperatorJacobiSmoother(invMd, ess_tdof_empty);
-   invM->iterative_mode = false;
+  Md = new HypreParVector(MPI_COMM_WORLD, matM->GetGlobalNumRows(),matM->GetRowStarts());
+  matM->GetDiag(*Md);
+  MinvBt = matC->Transpose();
+  MinvBt->InvScaleRows(*Md);
+  matS = ParMult(matB, MinvBt);
+  invM = new HypreDiagScale(*matM);
+  invS = new HypreBoomerAMG(*matS);
 
-   SchurrComp = new SchurrPrecon(Bt, opC.Ptr(), invMd);
-   invS = new SLISolver(MPI_COMM_WORLD);
-   invS->SetOperator(*SchurrComp);
-   invS->SetAbsTol(1.0e-12);
-   invS->SetRelTol(1.0e-07);
-   invS->SetMaxIter(25);
-//   invS->SetPrintLevel(1);
-   invS->iterative_mode = false;
+  invS->SetInterpolation(6);
+  invS->SetRelaxType(6);
 
-   darcyEMPr = new BlockDiagonalPreconditioner(block_trueOffsets);
-   darcyEMPr->SetDiagonalBlock(0,invM);
-   darcyEMPr->SetDiagonalBlock(1,invS);
+  darcyEMPr = new BlockDiagonalPreconditioner(block_trueOffsets);
+  darcyEMPr->SetDiagonalBlock(0,invM);
+  darcyEMPr->SetDiagonalBlock(1,invS);
 }
 
 //Sets the linear/non-linear solver
 //for the Darcy problem
 void DarcyEMProblem::Set_Solver(bool verbosity){
   int maxIter(500);
-  double rtol(1.e-6);
+  double rtol(1.e-8);
   double atol(1.e-10);
   solver = new MINRESSolver(MPI_COMM_WORLD);
   solver->SetAbsTol(atol);
@@ -483,6 +418,5 @@ DarcyEMProblem::~DarcyEMProblem(){
    if(JJForm    != NULL) delete JJForm;
    if(JVForm    != NULL) delete JVForm;
    if(VJForm    != NULL) delete VJForm;
-   if(VVForm    != NULL) delete VVForm;
 };
 #endif

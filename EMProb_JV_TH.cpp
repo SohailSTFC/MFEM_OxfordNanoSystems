@@ -12,6 +12,15 @@
 //  Div( J ) = 0
 //  V - Vb = 0
 //
+
+
+  //Set the assembly level
+/*
+  AssemblyLevel assembly_level = AssemblyLevel::FULL;
+  JJForm->SetAssemblyLevel(assembly_level);
+  JVForm->SetAssemblyLevel(assembly_level);
+  VJForm->SetAssemblyLevel(assembly_level);*/
+
 #include "mfem.hpp"
 #include <iostream>
 #include "include/boundaryConditions.hpp"

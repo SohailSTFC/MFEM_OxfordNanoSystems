@@ -46,11 +46,18 @@ int main(int argc, char *argv[])
    Hypre::Init();
    bool verbose = (myid == 0);
 
+   //Boundary condition arrays
+   Array<int> dbcs;
+   Array<int> nbcs;
+   Vector dbcv;
+
+   //Mat props
+   double sig = 1.0;
+
    // 2. Parse command-line options.
-//   const char *mesh_file = "mesh/star.mesh";
-   const char *mesh_file = "mesh/OxNanoSys0.mesh";
+   const char *mesh_file = "mesh/OxNanoSysU0.msh";
    int ref_levels = -1;
-   int order = 1;
+   int order = 2;
    bool pa = false;
    const char *device_config = "cpu"; //"cpu";//"ceed-cpu";
 
@@ -65,20 +72,17 @@ int main(int argc, char *argv[])
                   "--no-partial-assembly", "Enable Partial Assembly.");
    args.AddOption(&device_config, "-d", "--device",
                   "Device configuration string, see Device::Configure().");
+   args.AddOption(&sig, "-p", "--perm",
+                  "The permiability of the electrolyte (Sigma).");
+
 
    args.Parse();
    if (!args.Good())
    {
-      if (verbose)
-      {
-         args.PrintUsage(cout);
-      }
+      if (verbose) args.PrintUsage(cout);
       return 1;
    }
-   if (verbose)
-   {
-      args.PrintOptions(cout);
-   }
+   if (verbose) args.PrintOptions(cout);
 
    // 3. Enable hardware devices such as GPUs, and programming models such as
    //    CUDA, OCCA, RAJA and OpenMP based on command line options.
@@ -101,15 +105,8 @@ int main(int argc, char *argv[])
    //    'ref_levels' to be the largest number that gives a final mesh with no
    //    more than 10,000 elements, unless the user specifies it as input.
    {
-      if (ref_levels == -1)
-      {
-         ref_levels = (int)floor(log(10000./mesh->GetNE())/log(2.)/dim);
-      }
-
-      for (int l = 0; l < ref_levels; l++)
-      {
-         mesh->UniformRefinement();
-      }
+      if (ref_levels == -1) ref_levels = (int)floor(log(10000./mesh->GetNE())/log(2.)/dim);
+      for (int l = 0; l < ref_levels; l++) mesh->UniformRefinement();
    }
 
    // 6. Define a parallel mesh by a partitioning of the serial mesh. Refine
@@ -119,10 +116,7 @@ int main(int argc, char *argv[])
    delete mesh;
    {
       int par_ref_levels = 1;
-      for (int l = 0; l < par_ref_levels; l++)
-      {
-         pmesh->UniformRefinement();
-      }
+      for (int l = 0; l < par_ref_levels; l++) pmesh->UniformRefinement();
    }
 
    // 7. Define a parallel finite element space on the parallel mesh. Here we
@@ -134,7 +128,6 @@ int main(int argc, char *argv[])
    ParFiniteElementSpace *W_space = new ParFiniteElementSpace(pmesh, l2_coll);
 
    //Set up the problem
-   double sig = 1.0;
    MemoryType mt = device.GetMemoryType();
    DarcyEMProblem demoProb(R_space, W_space, sig, mt, dim);
     

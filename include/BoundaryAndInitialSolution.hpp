@@ -27,7 +27,7 @@ double pFun_ex(const Vector & x)
       zi = x(2);
    }
 
-   return exp(xi)*sin(yi)*cos(zi);
+   return 0.0; //exp(xi)*sin(yi)*cos(zi);
 }
 
 void fFun(const Vector & x, Vector & f)
@@ -45,10 +45,10 @@ double gFun(const Vector & x)
    {
       return 0.0;
    }
-}
+};
 
 double f_natural(const Vector & x)
 {
    return (-pFun_ex(x));
-}
+};
 #endif

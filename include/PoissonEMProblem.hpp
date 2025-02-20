@@ -31,8 +31,7 @@ class poissonEMproblem
     double sigma;
 
     //The Bilinear forms of the block components
-    // (Jacobian) (Assuming a symmetric Saddle point problem)
-    ParBilinearForm      *VVForm=NULL;
+    ParMixedBilinearForm *VV_Form=NULL;
 
     //The linear forms of the block components
     // (residual)
@@ -45,7 +44,7 @@ class poissonEMproblem
     // Form block operators (operates Matrix multiplication)
     // (This aggregates the block components of the forms)
     BlockOperator               *poissonEMOp = NULL;
-    BlockDiagonalPreconditioner *poissonEMPr = NULL;
+    BlockDiagonalPreconditioner *poissonEMpr = NULL;
 
     //The Block hypre matrices and Transposes for Jacobian
     TransposeOperator *Bt = NULL;
@@ -56,15 +55,12 @@ class poissonEMproblem
     IterativeSolver* solver=NULL;
 
     //The Preconditioning objects
-    HypreParMatrix *MinvBt = NULL, *matS = NULL;;
-    HypreParVector *Md = NULL;
-    Solver *invM=NULL;
-    HypreBoomerAMG *invS=NULL;
+    HypreBoomerAMG *invM=NULL;
 
     //Boundary Conditions
-    vector<vector<double>> DirchVal;       //Dirchelet value of BC
-    Array<int> ess_tdof_J, ess_tdof_v;     //Dirchelet BC DOF's
-    Array<int> ess_bdr_J, ess_bdr_v;       //Dirchelet BC Tag's
+    vector<vector<double>> DirchVal;  //Dirchelet value of BC
+    Array<int>  ess_tdof_v;           //Dirchelet BC DOF's
+    Array<int>  ess_bdr_v, ess_bdr_J; //Dirchelet BC Tag's
   
     //Read in and set the Boundary conditions
     void SetBCsArrays();
@@ -123,12 +119,12 @@ poissonEMproblem::poissonEMproblem(ParFiniteElementSpace *fL
   // Get the block offsets and true block offsets
   // to construct the block structured vectors
   // and matrix operators
-  Array<int> bofs(3); // number of variables + 1
+  Array<int> bofs(2); // number of variables + 1
   bofs[0] = 0;
   bofs[1] = fespaceL->GetVSize();
   bofs.PartialSum();
 
-  Array<int> btofs(3); // number of variables + 1
+  Array<int> btofs(2); // number of variables + 1
   btofs[0] = 0;
   btofs[1] = fespaceL->TrueVSize();
   btofs.PartialSum();
@@ -136,50 +132,33 @@ poissonEMproblem::poissonEMproblem(ParFiniteElementSpace *fL
   block_offsets     = Array<int>(bofs);
   block_trueOffsets = Array<int>(btofs);
 
+
+  //Setting the boundary conditions
+  SetBCsArrays();
+
   // 10. Define the parallel grid function and parallel linear forms, solution
   //     vector and rhs.
   x_vec.Update  (block_offsets, deviceMT);
   b_vec.Update  (block_offsets, deviceMT);
   tx_vec.Update (block_trueOffsets, deviceMT);
   tb_vec.Update (block_trueOffsets, deviceMT);
-
+  tb_vec = 0.0;
+  b_vec  = 0.0;
+  tx_vec = 0.0;
+  x_vec  = 0.0;
 
   // 9. Define the coefficients, analytical solution, and rhs of the PDE.
   // the coefficients and functions
-  ConstantCoefficient k(1.0/sigma);
-  VectorFunctionCoefficient fcoeff(dim, fFun);
-  FunctionCoefficient fnatcoeff(f_natural);
-  FunctionCoefficient gcoeff(gFun);
-
-  //
-  //  The linear forms (The RHS/Residual forms)
-  //
-  //v-Linear-form of the equation J + grad v = Je
-  VForm = new ParLinearForm;
-  VForm->Update(fespaceL, b_vec.GetBlock(0), 0);
-  VForm->AddDomainIntegrator(new VectorFEDomainLFIntegrator(fcoeff));
-  VForm->AddBoundaryIntegrator(new VectorFEBoundaryFluxLFIntegrator(fnatcoeff));
-  VForm->Assemble();
-  VForm->SyncAliasMemory(b_vec);
-  VForm->ParallelAssemble(tb_vec.GetBlock(0));
-  tb_vec.GetBlock(0).SyncAliasMemory(tb_vec);
+  ConstantCoefficient k(sigma);
 
   //
   // The Bilinear forms (matrix/jacobian forms)
   //
-
-  //The Bilinear block forms
-  VVForm = new ParBilinearForm(fespaceL);
-
-  //Setting the boundary conditions
-  SetBCsArrays();
-
-  //Set the integrators/integral forms and assemble the block matrices/bilinear forms
-  VVForm->AddDomainIntegrator(new VectorFEMassIntegrator(k));
-  VVForm->Assemble();
-
-  //Set the BCs and finalize the bilinear forms (PA)
-  VVForm->FormSystemMatrix(ess_bdr_v, opM);
+  Array<int> ess_tdof_empty;
+  VV_Form = new ParMixedBilinearForm(fespaceL, fespaceL);
+  VV_Form->AddDomainIntegrator(new DiffusionIntegrator(k));
+  VV_Form->Assemble();
+  VV_Form->FormRectangularSystemMatrix(ess_tdof_empty, ess_tdof_v, opM);
 
   //Set the block matrix operator
   poissonEMOp = new BlockOperator(block_trueOffsets);
@@ -191,14 +170,21 @@ poissonEMproblem::poissonEMproblem(ParFiniteElementSpace *fL
 void poissonEMproblem::SetBCsArrays(){
   //Essential boundary condition tags
   ess_bdr_v = Array<int>(fespaceL->GetMesh()->bdr_attributes.Max());
+  ess_bdr_J = Array<int>(fespaceL->GetMesh()->bdr_attributes.Max());
 
   //initialise the arrays
   ess_bdr_v = 0;
+  ess_bdr_J = 1;
 
   //fixed v
   ess_bdr_v[0] = 1;
   ess_bdr_v[1] = 1;
   ess_bdr_v[2] = 1;
+
+  //not fixed n.Grad(v)
+  ess_bdr_J[0] = 0;
+  ess_bdr_J[1] = 0;
+  ess_bdr_J[2] = 0;
 
   //Find the True Dofs
   fespaceL->GetEssentialTrueDofs(ess_bdr_v, ess_tdof_v);
@@ -210,11 +196,11 @@ void poissonEMproblem::SetBCsArrays(){
   DirchVal_tmp.clear();
 
   //v-Field BC-values
-  DirchVal_tmp[0] = 0.00; // Fixed v = c
-  DirchVal_tmp[1] = 3.00; // Fixed v = c
-  DirchVal_tmp[2] = 3.00; // Fixed v = c
-  DirchVal_tmp[3] = 0.00; // N/A
-  DirchVal_tmp[4] = 0.00; // N/A
+  DirchVal_tmp.push_back( 0.00); // Fixed v = c
+  DirchVal_tmp.push_back( 3.00); // Fixed v = c
+  DirchVal_tmp.push_back( 3.00); // Fixed v = c
+  DirchVal_tmp.push_back( 0.00); // N/A
+  DirchVal_tmp.push_back( 0.00); // N/A
   DirchVal.push_back(DirchVal_tmp);
   DirchVal_tmp.clear();
 };
@@ -225,29 +211,24 @@ void poissonEMproblem::SetFieldBCs(){
   //the current field
   int nv_tags = fespaceL->GetMesh()->bdr_attributes.Max();
   cout << setw(10) << "H1 element Tags: " << setw(10) << nv_tags << "\n";
-
-  tb_vec = 0.0;
-  b_vec  = 0.0;
-  tx_vec = 0.0;
-  x_vec  = 0.0;
-  x_vec = 0.2;
-  tx_vec= 0.2;
+  x_vec.GetBlock(0)  = 0.2;
+  tx_vec.GetBlock(0) = 0.2;
 
   //Set the V-Field BCs by looping over the
   //active boundaries
-  cout << setw(10) << "H1 elements: " << setw(10) << ess_tdof_J.Size() << "\n";
+  cout << setw(10) << "H1 elements: " << setw(10) << ess_tdof_v.Size() << "\n";
   for(int I=0; I<nv_tags; I++){
-    int K = ess_bdr_J[I];
+    int K = ess_bdr_v[I];
     if(K == 1){ //Checks if boundary is active
       Array<int> ess_tdof, ess_bdr_tmp(nv_tags);
       ess_bdr_tmp = 0;
       ess_bdr_tmp[I] = 1;
       fespaceL->GetEssentialTrueDofs(ess_bdr_tmp, ess_tdof);
       cout << setw(10) << I << setw(10) << ess_tdof.Size() << "\n";
-      x_vec.SetSubVector( ess_tdof, DirchVal[0][I] );
-      b_vec.SetSubVector( ess_tdof, DirchVal[0][I] );
-      tx_vec.SetSubVector( ess_tdof, DirchVal[0][I] );
-      tb_vec.SetSubVector( ess_tdof, DirchVal[0][I] );
+      x_vec.GetBlock(0).SetSubVector(  ess_tdof, DirchVal[0][I] );
+      b_vec.GetBlock(0).SetSubVector(  ess_tdof, DirchVal[0][I] );
+      tx_vec.GetBlock(0).SetSubVector( ess_tdof, DirchVal[0][I] );
+      tb_vec.GetBlock(0).SetSubVector( ess_tdof, DirchVal[0][I] );
     }
   }
 };
@@ -263,17 +244,21 @@ void poissonEMproblem::BuildPreconditioner()
   matM = static_cast<HypreParMatrix*>( opM.Ptr() );
   invM = new HypreBoomerAMG(*matM);
   invM->SetInterpolation(6);
+  invM->SetCoarsening(8);
   invM->SetRelaxType(6);
+  invM->SetCycleNumSweeps(2,2);
+  invM->SetCycleType(2);
 
+  poissonEMpr = new BlockDiagonalPreconditioner(block_trueOffsets);
   poissonEMpr->SetDiagonalBlock(0,invM);
 }
 
 //Sets the linear/non-linear solver
 //for the Darcy problem
 void poissonEMproblem::Set_Solver(bool verbosity){
-  int maxIter(500);
-  double rtol(1.e-8);
-  double atol(1.e-10);
+  int maxIter(750);
+  double rtol(1.e-9);
+  double atol(1.e-12);
   solver = new MINRESSolver(MPI_COMM_WORLD);
   solver->SetAbsTol(atol);
   solver->SetRelTol(rtol);
@@ -310,7 +295,7 @@ void poissonEMproblem::SetFields(){
   FieldNames.push_back("Potential");
   Fields.push_back(new ParGridFunction);
   Fields[0]->MakeRef(fespaceL, x_vec.GetBlock(0), 0);
-  Fields[0]->Distribute(&(tx_vec.GetBlock(0)));
+  Fields[0]->Distribute(&(tx_vec.GetBlock(0)) );
 };
 
 
@@ -318,6 +303,6 @@ poissonEMproblem::~poissonEMproblem(){
    if(VForm       != NULL) delete VForm;
    if(poissonEMOp != NULL) delete poissonEMOp;
    if(poissonEMpr != NULL) delete poissonEMpr;
-   if(VVForm      != NULL) delete VVForm;
+   if(VV_Form     != NULL) delete VV_Form;
 };
 #endif

@@ -34,7 +34,7 @@ class DarcyEMProblem
     //The Bilinear forms of the block components
     // (Jacobian) (Assuming a symmetric Saddle point problem)
     ParBilinearForm      *JJForm=NULL;
-    ParMixedBilinearForm *JVForm=NULL, *VJForm=NULL;
+    ParMixedBilinearForm *JJ_Form=NULL, *JVForm=NULL, *VJForm=NULL;
 
     //The linear forms of the block components
     // (residual)
@@ -46,7 +46,7 @@ class DarcyEMProblem
     mutable BlockVector tx_vec, tb_vec;
 
     // Form block operators (operates Matrix multiplication)
-    // (This aggregates the block components of the forms)
+	// (This aggregates the block components of the forms)
     BlockOperator               *darcyEMOp = NULL;
     BlockDiagonalPreconditioner *darcyEMPr = NULL;
 
@@ -54,7 +54,7 @@ class DarcyEMProblem
     //The Block hypre matrices and Transposes for Jacobian
     TransposeOperator *Bt = NULL;
     HypreParMatrix *matM=NULL, *matB=NULL, *matC=NULL;
-    OperatorPtr opM, opB, opC;
+    OperatorPtr opM1, opM, opB, opC;
 
     //Shared pointer to the solver
     IterativeSolver* solver=NULL;
@@ -156,11 +156,16 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
   b_vec.Update  (block_offsets, deviceMT);
   tx_vec.Update (block_trueOffsets, deviceMT);
   tb_vec.Update (block_trueOffsets, deviceMT);
-
+  tb_vec = 0.0;
+  b_vec  = 0.0;
+  tx_vec = 0.0;
+  x_vec  = 0.0;
 
   // 9. Define the coefficients, analytical solution, and rhs of the PDE.
   // the coefficients and functions
   ConstantCoefficient k(1.0/sigma);
+
+/*
   VectorFunctionCoefficient fcoeff(dim, fFun);
   FunctionCoefficient fnatcoeff(f_natural);
   FunctionCoefficient gcoeff(gFun);
@@ -186,16 +191,17 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
   JForm->SyncAliasMemory(b_vec);
   JForm->ParallelAssemble(tb_vec.GetBlock(1));
   tb_vec.GetBlock(1).SyncAliasMemory(tb_vec);
-
+*/
 
   //
   // The Bilinear forms (matrix/jacobian forms)
   //
 
   //The Bilinear block forms
-  JJForm = new ParBilinearForm(fespaceRT);
-  JVForm = new ParMixedBilinearForm(fespaceRT, fespaceL);
-  VJForm = new ParMixedBilinearForm(fespaceRT, fespaceL);
+  JJForm  = new ParBilinearForm(fespaceRT); 
+  JJ_Form = new ParMixedBilinearForm(fespaceRT, fespaceRT); 
+  JVForm  = new ParMixedBilinearForm(fespaceRT, fespaceL);
+  VJForm  = new ParMixedBilinearForm(fespaceRT, fespaceL);
 
   //Setting the boundary conditions
   SetBCsArrays();
@@ -205,16 +211,20 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
   JJForm->AddDomainIntegrator(new VectorFEMassIntegrator(k));
   JJForm->Assemble();
 
-  JVForm->AddDomainIntegrator(new VectorFEDivergenceIntegrator);
+  JJ_Form->AddDomainIntegrator(new MixedVectorMassIntegrator(k));
+  JJ_Form->Assemble();
+
+  JVForm->AddDomainIntegrator(new MixedVectorWeakDivergenceIntegrator);
   JVForm->Assemble();
 
-  VJForm->AddDomainIntegrator(new VectorFEDivergenceIntegrator);
+  VJForm->AddDomainIntegrator(new MixedVectorWeakDivergenceIntegrator);
   VJForm->Assemble();
 
   //Set the BCs and finalize the bilinear forms (PA)
-  JJForm->FormSystemMatrix( ess_tdof_J, opM);
-  VJForm->FormRectangularSystemMatrix( ess_tdof_J, ess_tdof_empty, opB);
-  JVForm->FormRectangularSystemMatrix( ess_tdof_empty, ess_tdof_v, opC);
+  JJForm->FormSystemMatrix(ess_tdof_empty, opM1);
+  JJ_Form->FormRectangularSystemMatrix(ess_tdof_empty, ess_tdof_J, opM);
+  JVForm->FormRectangularSystemMatrix( ess_tdof_J, ess_tdof_empty, opB);
+  VJForm->FormRectangularSystemMatrix( ess_tdof_empty, ess_tdof_v, opC);
   Bt = new TransposeOperator(opB.Ptr());
 
   //Set the block matrix operator
@@ -284,11 +294,6 @@ void DarcyEMProblem::SetFieldBCs(){
 
   cout << setw(10) << "RT element Tags: " << setw(10) << nJ_tags << "\n";
   cout << setw(10) << "H1 element Tags: " << setw(10) << nv_tags << "\n";
-
-  tb_vec = 0.0;
-  b_vec  = 0.0;
-  tx_vec = 0.0;
-  x_vec  = 0.0;
   x_vec.GetBlock(1) = 0.2;
   tx_vec.GetBlock(1) = 0.2;
 
@@ -337,22 +342,22 @@ void DarcyEMProblem::BuildPreconditioner()
 {
   //Construct the a Schurr Complement
   //Gauss-Seidel block Preconditioner
-  matM = static_cast<HypreParMatrix*>( opM.Ptr() );
+  matM = static_cast<HypreParMatrix*>( opM1.Ptr() );
   matB = static_cast<HypreParMatrix*>( opB.Ptr() );
   matC = static_cast<HypreParMatrix*>( opC.Ptr() );
   (*matB) *= -1.0; 
-  (*matC) *= -1.0; 
+  (*matC) *= -1.0;
 
   Md = new HypreParVector(MPI_COMM_WORLD, matM->GetGlobalNumRows(),matM->GetRowStarts());
   matM->GetDiag(*Md);
-  MinvBt = matC->Transpose();
+  MinvBt = matB->Transpose();
   MinvBt->InvScaleRows(*Md);
-  matS = ParMult(matB, MinvBt);
+  matS = ParMult(matC, MinvBt);
   invM = new HypreDiagScale(*matM);
   invS = new HypreBoomerAMG(*matS);
 
   invS->SetInterpolation(6);
-  invS->SetCoarsening(9);
+  invS->SetCoarsening(8);
   invS->SetRelaxType(6);
   invS->SetCycleNumSweeps(2,2);
   invS->SetCycleType(2);

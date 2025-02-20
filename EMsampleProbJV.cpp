@@ -121,7 +121,7 @@ int main(int argc, char *argv[])
 
    // 7. Define a parallel finite element space on the parallel mesh. Here we
    //    use the Raviart-Thomas finite elements of the specified order.
-   FiniteElementCollection *hdiv_coll(new RT_FECollection(order, dim));
+   FiniteElementCollection *hdiv_coll(new RT_FECollection(order+1, dim));
    FiniteElementCollection *l2_coll(new H1_FECollection(order));
 
    ParFiniteElementSpace *R_space = new ParFiniteElementSpace(pmesh, hdiv_coll);
@@ -141,7 +141,7 @@ int main(int argc, char *argv[])
    //Visualise the results using ParaView
    double time = 0.0;
    demoProb.SetFields();
-   ParaViewVisualise("EMSampleProb",demoProb.Fields, demoProb.FieldNames, order, pmesh, time);
+   ParaViewVisualise("EMSampleProbJV",demoProb.Fields, demoProb.FieldNames, order, pmesh, time);
 
    // 20. Free the used memory.
    delete W_space;

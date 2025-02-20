@@ -92,9 +92,6 @@ int main(int argc, char *argv[])
    // 4. Read the (serial) mesh from the given mesh file on all processors.  We
    //    can handle triangular, quadrilateral, tetrahedral, hexahedral, surface
    //    and volume meshes with the same code.
-
-
-/////void Mesh::ReadTrueGridMesh(std::istream &input)
    Mesh *mesh = new Mesh(mesh_file, 1, 1);
    int dim = mesh->Dimension();
 

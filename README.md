@@ -5,7 +5,7 @@ etc.. but different physical interpretations.
 
  The EMsampleProbV solves the following equations in using mixed H1 spaces.
 ```math
-\displaylines{ \nable \cdot \nabla v = \vec{J_e} \\
+\displaylines{ \nable \cdot \nabla v = Q
 ```
 
  The EMsampleProbJV solves the following equations in using mixed H(div)-H1 spaces.

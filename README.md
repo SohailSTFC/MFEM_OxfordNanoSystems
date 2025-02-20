@@ -3,9 +3,9 @@ A simple electromagnetics case expanded from MFEM
 tutorial ex5p and  ex0p using the similar finite element spaces
 etc.. but different physical interpretations. 
 
- The EMsampleProbV solves the following equations in using mixed H1 spaces.
+ The EMsampleProbV solves the following equation using the H1 space.
 ```math
-\displaylines{ \nable \cdot \nabla v = Q}
+\displaylines{ \nabla \cdot \nabla v = Q}
 ```
 
  The EMsampleProbJV solves the following equations in using mixed H(div)-H1 spaces.

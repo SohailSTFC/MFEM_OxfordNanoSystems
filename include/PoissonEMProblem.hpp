@@ -256,7 +256,7 @@ void poissonEMproblem::BuildPreconditioner()
 //Sets the linear/non-linear solver
 //for the Darcy problem
 void poissonEMproblem::Set_Solver(bool verbosity){
-  int maxIter(750);
+  int maxIter(2500);
   double rtol(1.e-9);
   double atol(1.e-12);
   solver = new MINRESSolver(MPI_COMM_WORLD);

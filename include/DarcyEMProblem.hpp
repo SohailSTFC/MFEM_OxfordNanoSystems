@@ -165,34 +165,6 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
   // the coefficients and functions
   ConstantCoefficient k(1.0/sigma);
 
-/*
-  VectorFunctionCoefficient fcoeff(dim, fFun);
-  FunctionCoefficient fnatcoeff(f_natural);
-  FunctionCoefficient gcoeff(gFun);
-
-  //
-  //  The linear forms (The RHS/Residual forms)
-  //
-  //v-Linear-form of the equation J + grad v = Je
-  VForm = new ParLinearForm;
-  VForm->Update(fespaceRT, b_vec.GetBlock(0), 0);
-  VForm->AddDomainIntegrator(new VectorFEDomainLFIntegrator(fcoeff));
-  VForm->AddBoundaryIntegrator(new VectorFEBoundaryFluxLFIntegrator(fnatcoeff));
-  VForm->Assemble();
-  VForm->SyncAliasMemory(b_vec);
-  VForm->ParallelAssemble(tb_vec.GetBlock(0));
-  tb_vec.GetBlock(0).SyncAliasMemory(tb_vec);
-
-  //J-Linear-form of the equation  div J = q
-  JForm = new ParLinearForm;
-  JForm->Update(fespaceL, b_vec.GetBlock(1), 0);
-  JForm->AddDomainIntegrator(new DomainLFIntegrator(gcoeff));
-  JForm->Assemble();
-  JForm->SyncAliasMemory(b_vec);
-  JForm->ParallelAssemble(tb_vec.GetBlock(1));
-  tb_vec.GetBlock(1).SyncAliasMemory(tb_vec);
-*/
-
   //
   // The Bilinear forms (matrix/jacobian forms)
   //
@@ -370,7 +342,7 @@ void DarcyEMProblem::BuildPreconditioner()
 //Sets the linear/non-linear solver
 //for the Darcy problem
 void DarcyEMProblem::Set_Solver(bool verbosity){
-  int maxIter(750);
+  int maxIter(2500);
   double rtol(1.e-7);
   double atol(1.e-10);
   solver = new MINRESSolver(MPI_COMM_WORLD);
@@ -423,6 +395,7 @@ DarcyEMProblem::~DarcyEMProblem(){
    if(VForm     != NULL) delete VForm;
    if(darcyEMOp != NULL) delete darcyEMOp;
    if(darcyEMPr != NULL) delete darcyEMPr;
+   if(JJ_Form   != NULL) delete JJ_Form;
    if(JJForm    != NULL) delete JJForm;
    if(JVForm    != NULL) delete JVForm;
    if(VJForm    != NULL) delete VJForm;

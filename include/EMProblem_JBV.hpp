@@ -33,6 +33,7 @@ class EMOperatorJBV : public Operator{
     vector<int>             L_ints;  //Integrated L-Forms
 
     ParBilinearForm      *JJForm=NULL,*BBForm=NULL;  //Bilinear type forms
+    ParMixedBilinearForm *JJForm=NULL,*BBForm=NULL;  //Bilinear type forms
     ParMixedBilinearForm *JBForm=NULL,*BJForm=NULL;  //Mixed components
     ParMixedBilinearForm *JVForm=NULL;               //Mixed components
 

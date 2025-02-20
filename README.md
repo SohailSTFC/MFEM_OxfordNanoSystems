@@ -1,9 +1,14 @@
 # MFEM Oxford Nano Systems
 A simple electromagnetics case expanded from MFEM
-tutorial ex5p solving the Darcy problem using the
-same finite element spaces etc.. but different physical
-interpertations. The system solves these equations in using mixed H(div),
-H1 spaces.
+tutorial ex5p and  ex0p using the similar finite element spaces
+etc.. but different physical interpretations. 
+
+ The EMsampleProbV solves the following equations in using mixed H1 spaces.
+```math
+\displaylines{ \nable \cdot \nabla v = \vec{J_e} \\
+```
+
+ The EMsampleProbJV solves the following equations in using mixed H(div)-H1 spaces.
 ```math
 \displaylines{k \vec{J} + \nabla v = \vec{J_e}, \\
 - \nabla \cdot \vec{J} = Q,}

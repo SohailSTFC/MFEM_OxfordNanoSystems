@@ -52,7 +52,7 @@ int main(int argc, char *argv[])
    Vector dbcv;
 
    //Mat props
-   double sig = 1.0;
+   double sig = 1.0, MU = 1.0;
 
    // 2. Parse command-line options.
    const char *mesh_file = "mesh/OxNanoSysU0.msh";
@@ -121,15 +121,17 @@ int main(int argc, char *argv[])
 
    // 7. Define a parallel finite element space on the parallel mesh. Here we
    //    use the Raviart-Thomas finite elements of the specified order.
-   FiniteElementCollection *hdiv_coll(new RT_FECollection(order+1, dim));
+   FiniteElementCollection *hdiv_coll(new RT_FECollection(order, dim));
+   FiniteElementCollection *HCurl_coll(new ND_FECollection(order));
    FiniteElementCollection *l2_coll(new H1_FECollection(order));
 
    ParFiniteElementSpace *R_space = new ParFiniteElementSpace(pmesh, hdiv_coll);
+   ParFiniteElementSpace *B_space = new ParFiniteElementSpace(pmesh, HCurl_coll);
    ParFiniteElementSpace *W_space = new ParFiniteElementSpace(pmesh, l2_coll);
 
    //Set up the problem
    MemoryType mt = device.GetMemoryType();
-   DarcyEMProblem demoProb(R_space, W_space, sig, mt, dim);
+   DarcyEMProblem demoProb(R_space, B_space, W_space, sig, MU, mt, dim);
     
    //Set the solver and preconditioner
    demoProb.BuildPreconditioner();

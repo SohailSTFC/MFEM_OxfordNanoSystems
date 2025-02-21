@@ -30,7 +30,7 @@
 
 // Define the analytical solution and forcing terms / boundary conditions
 #include "include/BoundaryAndInitialSolution.hpp"
-#include "include/DarcyEMProblem.hpp"
+#include "include/JBvEMProblem.hpp"
 #include "include/Visualisation.hpp"
 
 using namespace std;
@@ -122,7 +122,7 @@ int main(int argc, char *argv[])
    // 7. Define a parallel finite element space on the parallel mesh. Here we
    //    use the Raviart-Thomas finite elements of the specified order.
    FiniteElementCollection *hdiv_coll(new RT_FECollection(order, dim));
-   FiniteElementCollection *HCurl_coll(new ND_FECollection(order));
+   FiniteElementCollection *HCurl_coll(new ND_FECollection(order, dim));
    FiniteElementCollection *l2_coll(new H1_FECollection(order));
 
    ParFiniteElementSpace *R_space = new ParFiniteElementSpace(pmesh, hdiv_coll);
@@ -131,8 +131,8 @@ int main(int argc, char *argv[])
 
    //Set up the problem
    MemoryType mt = device.GetMemoryType();
-   DarcyEMProblem demoProb(R_space, B_space, W_space, sig, MU, mt, dim);
-    
+   JBvEMProblem demoProb(R_space, B_space, W_space, sig, MU, mt, dim);
+
    //Set the solver and preconditioner
    demoProb.BuildPreconditioner();
    demoProb.Set_Solver(verbose);
@@ -143,13 +143,11 @@ int main(int argc, char *argv[])
    //Visualise the results using ParaView
    double time = 0.0;
    demoProb.SetFields();
-   ParaViewVisualise("EMSampleProbJV",demoProb.Fields, demoProb.FieldNames, order, pmesh, time);
+   ParaViewVisualise("EMSampleProbJBv",demoProb.Fields, demoProb.FieldNames, order, pmesh, time);
 
    // 20. Free the used memory.
-   delete W_space;
-   delete R_space;
-   delete l2_coll;
-   delete hdiv_coll;
+   delete W_space, B_space, R_space;
+   delete l2_coll, HCurl_coll, hdiv_coll;
    delete pmesh;
    return 0;
 }

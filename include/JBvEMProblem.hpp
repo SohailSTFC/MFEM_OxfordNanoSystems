@@ -93,7 +93,7 @@ class JBvEMProblem
 
     //The constructor
     JBvEMProblem(ParFiniteElementSpace *f1, ParFiniteElementSpace *f2, ParFiniteElementSpace *f3
-	       , double sig, double MU, MemoryType deviceMT, int dim);
+	       , double *sig, double *MU, MemoryType deviceMT, int dim);
 
     //Build and set a Preconditioner for the solver
     void BuildPreconditioner();
@@ -124,8 +124,8 @@ class JBvEMProblem
 JBvEMProblem::JBvEMProblem(ParFiniteElementSpace *f1RT
                          , ParFiniteElementSpace *f2N
                          , ParFiniteElementSpace *f3L
-                         , double sig, double MU, MemoryType deviceMT, int dim)
-: sigma(sig), mu(MU)
+                         , double *sig, double *MU, MemoryType deviceMT, int dim)
+: sigma(*sig), mu(*MU)
 {
   DIM = dim;
   fespaceRT = new ParFiniteElementSpace(*f1RT);
@@ -208,7 +208,7 @@ JBvEMProblem::JBvEMProblem(ParFiniteElementSpace *f1RT
   JJ_Form->AddDomainIntegrator(new VectorFEMassIntegrator(One));
   JJ_Form->Assemble();
 
-  BB_Form->AddDomainIntegrator(new CurlCurlIntegrator(One));
+  BB_Form->AddDomainIntegrator(new VectorFECurlIntegrator(One));
   BB_Form->Assemble();
 
   //Mixed Bilinear forms (for solution)
@@ -221,10 +221,10 @@ JBvEMProblem::JBvEMProblem(ParFiniteElementSpace *f1RT
   JVForm->AddDomainIntegrator(new MixedVectorWeakDivergenceIntegrator(Sigma));
   JVForm->Assemble();
 
-  BBForm->AddDomainIntegrator(new MixedCurlCurlIntegrator(One));
+  BBForm->AddDomainIntegrator(new MixedVectorWeakCurlIntegrator(One));
   BBForm->Assemble();
 
-  BJForm->AddDomainIntegrator(new MixedVectorWeakCurlIntegrator(Mu));
+  BJForm->AddDomainIntegrator(new MixedVectorMassIntegrator(Mu));
   BJForm->Assemble();
 
   VJForm->AddDomainIntegrator(new MixedVectorWeakDivergenceIntegrator(Sigma));
@@ -243,7 +243,7 @@ JBvEMProblem::JBvEMProblem(ParFiniteElementSpace *f1RT
   BJForm->FormRectangularSystemMatrix( ess_tdof_empty, ess_tdof_B, OpBJ);
   VJForm->FormRectangularSystemMatrix( ess_tdof_empty, ess_tdof_v, OpVJ);
 
-  JVt = new TransposeOperator(OpVJ.Ptr());
+  JVt = new TransposeOperator(OpJV.Ptr());
   JBt = new TransposeOperator(OpJB.Ptr());
   
   //Set the block matrix operator
@@ -255,7 +255,7 @@ JBvEMProblem::JBvEMProblem(ParFiniteElementSpace *f1RT
   JBvEMOp->SetBlock(0,2, JVt, -1.0);
 
   //Row 1
-//  JBvEMOp->SetBlock(1,0, OpBJ.Ptr(), -1.0);
+  JBvEMOp->SetBlock(1,0, OpBJ.Ptr(), -1.0);
   JBvEMOp->SetBlock(1,1, OpBB.Ptr(),  1.0);
 
   //Row 2
@@ -411,6 +411,7 @@ void JBvEMProblem::BuildPreconditioner()
 {
   //Construct the a Schurr Complement
   //Gauss-Seidel block Preconditioner
+  matBB = static_cast<HypreParMatrix*>( OpBB1.Ptr() );
   matJJ = static_cast<HypreParMatrix*>( OpJJ1.Ptr() );
   matJV = static_cast<HypreParMatrix*>( OpJV.Ptr() );
   matVJ = static_cast<HypreParMatrix*>( OpVJ.Ptr() );
@@ -422,8 +423,6 @@ void JBvEMProblem::BuildPreconditioner()
   MinvBt->InvScaleRows(*Md);
   matS1  = ParMult(matJV, MinvBt);
 
-  invM  = new HypreDiagScale(*matJJ);
-  invS2 = new HypreBoomerAMG(*matS1);
 /*
     OperatorPtr OpJJ1, OpBB1;
     OperatorPtr OpJJ, OpBB, OpJB, OpJV, OpBJ, OpVJ;
@@ -441,21 +440,14 @@ void JBvEMProblem::BuildPreconditioner()
 
     invS1 = new OperatorJacobiSmoother(Md_PA, ess_tdof_list);
 */
-//  invS1  = new HypreDiagScale(*matBB);
-  matBB = static_cast<HypreParMatrix*>( OpBB1.Ptr() );
+  invM  = new HypreADS(*matJJ, fespaceRT);
   invS1 = new HypreAMS(*matBB, fespaceN);
-/*
-  matM->GetDiag(*Md);
-  MinvBt = matB->Transpose();
-  MinvBt->InvScaleRows(*Md);
-  matS = ParMult(matC, MinvBt);
-  invM = new HypreDiagScale(*matM);
-  invS = new HypreBoomerAMG(*matS);
-*/
+  invS2 = new HypreBoomerAMG(*matS1);
+
   invS2->SetInterpolation(6);
   invS2->SetCoarsening(8);
   invS2->SetRelaxType(6);
-  invS2->SetCycleNumSweeps(2,2);
+  invS2->SetCycleNumSweeps(1,1);
   invS2->SetCycleType(2);
 
   JBvEMPr = new BlockDiagonalPreconditioner(block_trueOffsets);
@@ -467,7 +459,7 @@ void JBvEMProblem::BuildPreconditioner()
 //Sets the linear/non-linear solver
 //for the Darcy problem
 void JBvEMProblem::Set_Solver(bool verbosity){
-  int maxIter(30);
+  int maxIter(75);
   double rtol(1.e-7);
   double atol(1.e-10);
   solver = new MINRESSolver(MPI_COMM_WORLD);

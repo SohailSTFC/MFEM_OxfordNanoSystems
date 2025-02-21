@@ -13,14 +13,13 @@
 #
 # export MFEM_INSTALL_DIR=/your/MFEMInstall
 #
-MFEM_INSTALL_DIR=/home/sar-local/Documents/ExaProjects/MFEM_STUFF/mfem-4.7/build
+MFEM_INSTALL_DIR=/home/sohail/MFEM_STUFF/mfem-4.6/build
 CONFIG_MK = $(MFEM_INSTALL_DIR)/share/mfem/config.mk
 
 MFEM_LIB_FILE = mfem_is_not_built
 -include $(CONFIG_MK)
 
-EXECUTABLES = EMsampleProbJVB
-#### EMsampleProbJV EMsampleProbV
+EXECUTABLES = EMsampleProbJVB EMsampleProbJV EMsampleProbV
 
 .PHONY: all clean
 

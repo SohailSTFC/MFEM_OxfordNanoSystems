@@ -1,11 +1,12 @@
 SetFactory("OpenCASCADE");
   
 Mesh.Algorithm = 6;
-Mesh.CharacteristicLengthMin = 0.05;
-Mesh.CharacteristicLengthMax = 0.2;
+Mesh.CharacteristicLengthMin = 0.0005;
+Mesh.CharacteristicLengthMax = 0.4;
 Mesh.PartitionOldStyleMsh2 = 1;
 Mesh.PreserveNumberingMsh2 = 1;
 
+ExtrL=0.1;
 L=0.5;
 L_anode=0.1;
 L_sampl=0.05;
@@ -21,8 +22,8 @@ Rectangle(4) = {L/2-L_sampl/2, L/2+th_sampl/2,   0, L_sampl, th_sampl}; //Sample
 BooleanDifference(5) = { Surface{1}; Delete; }{ Surface{2,3,4}; Delete; };
 
 Recombine Surface {5};
-Extrude{0,0,L}{
-  Surface{5}; Layers{{8},{1}}; Recombine;
+Extrude{0,0,ExtrL}{
+  Surface{5}; Layers{{2},{1}}; Recombine;
 }
 
 Physical Volume(1)  = {1};

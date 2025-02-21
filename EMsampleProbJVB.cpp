@@ -9,7 +9,8 @@
 // Description:  This example code solves a simple 2D/3D mixed Darcy problem
 //               corresponding to the saddle point system
 //
-//                                 J + grad v = f
+//                                 J + grad v + (U X B) = f
+//                                 Curl(B) - mu J = 0
 //                                 - div J    = g
 //
 //               with natural boundary condition -v = <given potenialt>.
@@ -52,7 +53,7 @@ int main(int argc, char *argv[])
    Vector dbcv;
 
    //Mat props
-   double sig = 1.0, MU = 1.0;
+   double sig = 1.00, MU = 1.00;
 
    // 2. Parse command-line options.
    const char *mesh_file = "mesh/OxNanoSysU0.msh";
@@ -92,9 +93,6 @@ int main(int argc, char *argv[])
    // 4. Read the (serial) mesh from the given mesh file on all processors.  We
    //    can handle triangular, quadrilateral, tetrahedral, hexahedral, surface
    //    and volume meshes with the same code.
-
-
-/////void Mesh::ReadTrueGridMesh(std::istream &input)
    Mesh *mesh = new Mesh(mesh_file, 1, 1);
    int dim = mesh->Dimension();
 
@@ -131,7 +129,7 @@ int main(int argc, char *argv[])
 
    //Set up the problem
    MemoryType mt = device.GetMemoryType();
-   JBvEMProblem demoProb(R_space, B_space, W_space, sig, MU, mt, dim);
+   JBvEMProblem demoProb(R_space, B_space, W_space, &sig, &MU, mt, dim);
 
    //Set the solver and preconditioner
    demoProb.BuildPreconditioner();

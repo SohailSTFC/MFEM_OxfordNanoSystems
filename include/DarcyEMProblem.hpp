@@ -325,13 +325,13 @@ void DarcyEMProblem::BuildPreconditioner()
   MinvBt = matB->Transpose();
   MinvBt->InvScaleRows(*Md);
   matS = ParMult(matC, MinvBt);
-  invM = new HypreDiagScale(*matM);
+  invM = new HypreADS(*matM, fespaceRT);
   invS = new HypreBoomerAMG(*matS);
 
   invS->SetInterpolation(6);
   invS->SetCoarsening(8);
   invS->SetRelaxType(6);
-  invS->SetCycleNumSweeps(2,2);
+  invS->SetCycleNumSweeps(1,1);
   invS->SetCycleType(2);
 
   darcyEMPr = new BlockDiagonalPreconditioner(block_trueOffsets);

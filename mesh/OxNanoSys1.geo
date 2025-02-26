@@ -27,8 +27,11 @@ Extrude{0,0,ExtrL}{
 }
 
 Physical Volume(1)  = {1};
-Physical Surface(5) = {22, 5};
-Physical Surface(4) = {8, 9, 7, 6};
+Physical Surface(8) = {22, 5};
+Physical Surface(7) = {9};
+Physical Surface(6) = {8};
+Physical Surface(5) = {7};
+Physical Surface(4) = {6};
 Physical Surface(3) = {21, 20, 18, 19};
 Physical Surface(2) = {12, 13, 10, 11};
 Physical Surface(1) = {14, 16, 17, 15};

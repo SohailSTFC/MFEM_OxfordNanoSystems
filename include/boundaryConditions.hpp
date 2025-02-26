@@ -2,7 +2,7 @@
 #define BOUNDARYCONDITIONS_HPP
 
 #include "mfem.hpp"
-#include "../../mfem-4.7/general/forall.hpp"
+#include "../../mfem-4.6/general/forall.hpp"
 
 using namespace mfem;
 using namespace std;

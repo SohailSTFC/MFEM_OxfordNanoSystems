@@ -36,7 +36,6 @@
 using namespace std;
 using namespace mfem;
 
-
 int main(int argc, char *argv[])
 {
    // 1. Initialize MPI and HYPRE.
@@ -92,9 +91,6 @@ int main(int argc, char *argv[])
    // 4. Read the (serial) mesh from the given mesh file on all processors.  We
    //    can handle triangular, quadrilateral, tetrahedral, hexahedral, surface
    //    and volume meshes with the same code.
-
-
-/////void Mesh::ReadTrueGridMesh(std::istream &input)
    Mesh *mesh = new Mesh(mesh_file, 1, 1);
    int dim = mesh->Dimension();
 
@@ -121,11 +117,11 @@ int main(int argc, char *argv[])
 
    // 7. Define a parallel finite element space on the parallel mesh. Here we
    //    use the Raviart-Thomas finite elements of the specified order.
-   FiniteElementCollection *hdiv_coll(new RT_FECollection(order, dim));
-   FiniteElementCollection *l2_coll(new H1_FECollection(order));
+   FiniteElementCollection *RT_coll(new RT_FECollection(order+1, dim));
+   FiniteElementCollection *H1_coll(new H1_FECollection(order));
 
-   ParFiniteElementSpace *R_space = new ParFiniteElementSpace(pmesh, hdiv_coll);
-   ParFiniteElementSpace *W_space = new ParFiniteElementSpace(pmesh, l2_coll);
+   ParFiniteElementSpace *R_space = new ParFiniteElementSpace(pmesh, RT_coll);
+   ParFiniteElementSpace *W_space = new ParFiniteElementSpace(pmesh, H1_coll);
 
    //Set up the problem
    MemoryType mt = device.GetMemoryType();
@@ -146,8 +142,7 @@ int main(int argc, char *argv[])
    // 20. Free the used memory.
    delete W_space;
    delete R_space;
-   delete l2_coll;
-   delete hdiv_coll;
+   delete RT_coll, H1_coll;
    delete pmesh;
    return 0;
 }

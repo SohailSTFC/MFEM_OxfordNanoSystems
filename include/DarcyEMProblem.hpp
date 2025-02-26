@@ -175,6 +175,7 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
   JVForm  = new ParMixedBilinearForm(fespaceRT, fespaceL);
   VJForm  = new ParMixedBilinearForm(fespaceRT, fespaceL);
 
+
   //Setting the boundary conditions
   SetBCsArrays();
   Array<int> ess_tdof_empty;
@@ -325,7 +326,8 @@ void DarcyEMProblem::BuildPreconditioner()
   MinvBt = matB->Transpose();
   MinvBt->InvScaleRows(*Md);
   matS = ParMult(matC, MinvBt);
-  invM = new HypreADS(*matM, fespaceRT);
+  if(DIM==3) invM = new HypreADS(*matM, fespaceRT);
+  if(DIM!=3) invM = new HypreDiagScale(*matM);
   invS = new HypreBoomerAMG(*matS);
 
   invS->SetInterpolation(6);

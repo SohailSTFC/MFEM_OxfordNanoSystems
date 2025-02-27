@@ -51,7 +51,7 @@ int main(int argc, char *argv[])
    Vector dbcv;
 
    //Mat props
-   double sig = 1.0;
+   double sig = 5.500E-06, MU = 1.257E-06;
 
    // 2. Parse command-line options.
    const char *mesh_file = "mesh/OxNanoSysU0.msh";

@@ -22,8 +22,8 @@ class JBvEMProblem
 
     //Finite element spaces
     ParFiniteElementSpace *fespaceRT=NULL; //Raviart Thomas elements
-    ParFiniteElementSpace *fespaceN=NULL;  //Nedlec elements
-    ParFiniteElementSpace *fespaceL=NULL;  //Lagrange finite element space
+    ParFiniteElementSpace *fespaceND=NULL;  //Nedlec elements
+    ParFiniteElementSpace *fespaceH1=NULL;  //Lagrange finite element space
 
     //Block Matrix structure offsets
     Array<int> block_offsets;     // number of variables + 1 (2-variables J and v)
@@ -34,10 +34,11 @@ class JBvEMProblem
 
     //The Bilinear forms of the block components
     // (Jacobian) (Assuming a symmetric Saddle point problem)
-    ParBilinearForm      *JJ_Form=NULL,*BB_Form=NULL; //Bilinear type forms
-    ParMixedBilinearForm *JJForm=NULL,*BBForm=NULL;   //Bilinear type forms
-    ParMixedBilinearForm *JBForm=NULL,*BJForm=NULL;   //Mixed components
-    ParMixedBilinearForm *JVForm=NULL,*VJForm=NULL;   //Mixed components
+    ParBilinearForm      *JJ_Form=NULL,*BB_Form=NULL;//Bilinear type forms
+    ParMixedBilinearForm *JJForm=NULL,*BBForm=NULL;  //Bilinear type forms
+    ParMixedBilinearForm *JBForm=NULL,*BJForm=NULL;  //Mixed components
+    ParMixedBilinearForm *JVForm=NULL,*VJForm=NULL;  //Mixed components
+    ParMixedBilinearForm *VBForm=NULL;               //Mixed components
 
     //The linear forms of the block components
     // (residual)
@@ -60,7 +61,7 @@ class JBvEMProblem
     HypreParMatrix *matBB=NULL, *matBJ=NULL;
     HypreParMatrix *matVJ=NULL;
     OperatorPtr OpJJ1, OpBB1;
-    OperatorPtr OpJJ, OpBB, OpJB, OpJV, OpBJ, OpVJ;
+    OperatorPtr OpJJ, OpBB, OpJB, OpJV, OpBJ, OpVJ, OpVB;
     TransposeOperator *JVt = NULL,*JBt = NULL, *BJt = NULL;
 
     //Shared pointer to the solver
@@ -129,12 +130,12 @@ JBvEMProblem::JBvEMProblem(ParFiniteElementSpace *f1RT
 {
   DIM = dim;
   fespaceRT = new ParFiniteElementSpace(*f1RT);
-  fespaceN  = new ParFiniteElementSpace(*f2N);
-  fespaceL  = new ParFiniteElementSpace(*f3L);
+  fespaceND  = new ParFiniteElementSpace(*f2N);
+  fespaceH1  = new ParFiniteElementSpace(*f3L);
 
   HYPRE_BigInt dimR = fespaceRT->GlobalTrueVSize();
-  HYPRE_BigInt dimN = fespaceN->GlobalTrueVSize();
-  HYPRE_BigInt dimW = fespaceL->GlobalTrueVSize();
+  HYPRE_BigInt dimN = fespaceND->GlobalTrueVSize();
+  HYPRE_BigInt dimW = fespaceH1->GlobalTrueVSize();
 
   std::cout << "***********************************************************\n";
   std::cout << "dim(R) = " << dimR << "\n";
@@ -149,15 +150,15 @@ JBvEMProblem::JBvEMProblem(ParFiniteElementSpace *f1RT
   Array<int> bofs(4); // number of variables + 1
   bofs[0] = 0;
   bofs[1] = fespaceRT->GetVSize();
-  bofs[2] = fespaceN->GetVSize();
-  bofs[3] = fespaceL->GetVSize();
+  bofs[2] = fespaceND->GetVSize();
+  bofs[3] = fespaceH1->GetVSize();
   bofs.PartialSum();
 
   Array<int> btofs(4); // number of variables + 1
   btofs[0] = 0;
   btofs[1] = fespaceRT->TrueVSize();
-  btofs[2] = fespaceN->TrueVSize();
-  btofs[3] = fespaceL->TrueVSize();
+  btofs[2] = fespaceND->TrueVSize();
+  btofs[3] = fespaceH1->TrueVSize();
   btofs.PartialSum();
  
   block_offsets     = Array<int>(bofs);
@@ -180,6 +181,7 @@ JBvEMProblem::JBvEMProblem(ParFiniteElementSpace *f1RT
   ConstantCoefficient One(1.00);
   ConstantCoefficient Sigma(sigma);
   ConstantCoefficient Mu(mu);
+  ProductCoefficient MuSigma(mu,Sigma);
   VectorConstantCoefficient U_func(Vector({0.0, 0.0, 0.1}));
 
   //
@@ -187,17 +189,17 @@ JBvEMProblem::JBvEMProblem(ParFiniteElementSpace *f1RT
   //
   //The Bilinear block forms
   JJ_Form  = new ParBilinearForm(fespaceRT); 
-  BB_Form  = new ParBilinearForm(fespaceN); 
+  BB_Form  = new ParBilinearForm(fespaceND); 
 
   JJForm = new ParMixedBilinearForm(fespaceRT, fespaceRT); 
-  JBForm = new ParMixedBilinearForm(fespaceRT, fespaceN ); 
-  JVForm = new ParMixedBilinearForm(fespaceRT, fespaceL );
+  JBForm = new ParMixedBilinearForm(fespaceRT, fespaceND ); 
+  JVForm = new ParMixedBilinearForm(fespaceRT, fespaceH1 );
 
-  BBForm = new ParMixedBilinearForm(fespaceN , fespaceN);
-  BJForm = new ParMixedBilinearForm(fespaceRT, fespaceN);
+  BBForm = new ParMixedBilinearForm(fespaceND, fespaceND);
+  BJForm = new ParMixedBilinearForm(fespaceRT, fespaceND);
 
-  VJForm = new ParMixedBilinearForm(fespaceRT, fespaceL);
-
+  VJForm = new ParMixedBilinearForm(fespaceRT, fespaceH1);
+  VBForm = new ParMixedBilinearForm(fespaceND, fespaceH1);
 
   //Setting the boundary conditions
   SetBCsArrays();
@@ -214,22 +216,20 @@ JBvEMProblem::JBvEMProblem(ParFiniteElementSpace *f1RT
   //Mixed Bilinear forms (for solution)
   JJForm->AddDomainIntegrator(new MixedVectorMassIntegrator(One));
   JJForm->Assemble();
-
   JBForm->AddDomainIntegrator(new MixedCrossProductIntegrator(U_func));
   JBForm->Assemble();
-
   JVForm->AddDomainIntegrator(new MixedVectorWeakDivergenceIntegrator(Sigma));
   JVForm->Assemble();
 
   BBForm->AddDomainIntegrator(new MixedVectorWeakCurlIntegrator(One));
   BBForm->Assemble();
-
   BJForm->AddDomainIntegrator(new MixedVectorMassIntegrator(Mu));
   BJForm->Assemble();
 
   VJForm->AddDomainIntegrator(new MixedVectorWeakDivergenceIntegrator(Sigma));
   VJForm->Assemble();
-
+  VBForm->AddDomainIntegrator(new MixedWeakDivCrossIntegrator(U_func));
+  VBForm->Assemble();
 
   //Set the BCs and finalize the bilinear forms (PA)
   JJ_Form->FormSystemMatrix(ess_tdof_empty, OpJJ1);
@@ -241,25 +241,28 @@ JBvEMProblem::JBvEMProblem(ParFiniteElementSpace *f1RT
   JBForm->FormRectangularSystemMatrix( ess_tdof_J, ess_tdof_empty, OpJB);
   JVForm->FormRectangularSystemMatrix( ess_tdof_J, ess_tdof_empty, OpJV);
   BJForm->FormRectangularSystemMatrix( ess_tdof_empty, ess_tdof_B, OpBJ);
+
   VJForm->FormRectangularSystemMatrix( ess_tdof_empty, ess_tdof_v, OpVJ);
+  VBForm->FormRectangularSystemMatrix( ess_tdof_empty, ess_tdof_v, OpVB);
 
   JVt = new TransposeOperator(OpJV.Ptr());
   JBt = new TransposeOperator(OpJB.Ptr());
-  
+
   //Set the block matrix operator
   JBvEMOp = new BlockOperator(block_trueOffsets);
 
   //Row 0
   JBvEMOp->SetBlock(0,0, OpJJ.Ptr(), 1.0);
-//  JBvEMOp->SetBlock(0,1, JBt, 1.0);
+ // JBvEMOp->SetBlock(0,1, JBt, 1.0);
   JBvEMOp->SetBlock(0,2, JVt, -1.0);
 
   //Row 1
   JBvEMOp->SetBlock(1,0, OpBJ.Ptr(), -1.0);
   JBvEMOp->SetBlock(1,1, OpBB.Ptr(),  1.0);
-
+  
   //Row 2
   JBvEMOp->SetBlock(2,0, OpVJ.Ptr(), -1.0);
+//  JBvEMOp->SetBlock(2,1, OpVB.Ptr(), -1.0);
 };
 
 //Sets the natural and essential boundary
@@ -267,8 +270,8 @@ JBvEMProblem::JBvEMProblem(ParFiniteElementSpace *f1RT
 void JBvEMProblem::SetBCsArrays(){
   //Essential boundary condition tags
   int nJTags = fespaceRT->GetMesh()->bdr_attributes.Max();
-  int nBTags = fespaceN->GetMesh()->bdr_attributes.Max();
-  int nVTags = fespaceL->GetMesh()->bdr_attributes.Max();
+  int nBTags = fespaceND->GetMesh()->bdr_attributes.Max();
+  int nVTags = fespaceH1->GetMesh()->bdr_attributes.Max();
   
   ess_bdr_J = Array<int>(nJTags);
   ess_bdr_B = Array<int>(nBTags);
@@ -297,7 +300,7 @@ void JBvEMProblem::SetBCsArrays(){
   //Find the True Dofs
   fespaceRT->GetEssentialTrueDofs(ess_bdr_J, ess_tdof_J);
   fespaceRT->GetEssentialTrueDofs(ess_bdr_B, ess_tdof_B);
-  fespaceL->GetEssentialTrueDofs(ess_bdr_v, ess_tdof_v);
+  fespaceH1->GetEssentialTrueDofs(ess_bdr_v, ess_tdof_v);
 
   cout << setw(10) << "RT elements: " << setw(10) << ess_tdof_J.Size() << "\n";
   cout << setw(10) << "ND elements: " << setw(10) << ess_tdof_B.Size() << "\n";
@@ -339,8 +342,8 @@ void JBvEMProblem::SetFieldBCs(){
   //Set the boundary Solution function for
   //the current field
   int nJ_tags = fespaceRT->GetMesh()->bdr_attributes.Max();
-  int nB_tags = fespaceN->GetMesh()->bdr_attributes.Max();
-  int nv_tags = fespaceL->GetMesh()->bdr_attributes.Max();
+  int nB_tags = fespaceND->GetMesh()->bdr_attributes.Max();
+  int nv_tags = fespaceH1->GetMesh()->bdr_attributes.Max();
 
   cout << setw(10) << "RT element Tags: " << setw(10) << nJ_tags << "\n";
   cout << setw(10) << "H1 element Tags: " << setw(10) << nv_tags << "\n";
@@ -374,7 +377,7 @@ void JBvEMProblem::SetFieldBCs(){
       Array<int> ess_tdof, ess_bdr_tmp(nB_tags);
       ess_bdr_tmp = 0;
       ess_bdr_tmp[I] = 1;
-      fespaceN->GetEssentialTrueDofs(ess_bdr_tmp, ess_tdof);
+      fespaceND->GetEssentialTrueDofs(ess_bdr_tmp, ess_tdof);
       cout << setw(10) << I << setw(10) << ess_tdof.Size() << "\n";
       x_vec.GetBlock(1).SetSubVector( ess_tdof, DirchVal[1][I] );
       b_vec.GetBlock(1).SetSubVector( ess_tdof, DirchVal[1][I] );
@@ -393,7 +396,7 @@ void JBvEMProblem::SetFieldBCs(){
       Array<int> ess_tdof, ess_bdr_tmp(nv_tags);
       ess_bdr_tmp = 0;
       ess_bdr_tmp[I] = 1;
-      fespaceL->GetEssentialTrueDofs(ess_bdr_tmp, ess_tdof);
+      fespaceH1->GetEssentialTrueDofs(ess_bdr_tmp, ess_tdof);
       cout << setw(10) << I << setw(10) << ess_tdof.Size() << "\n";
       x_vec.GetBlock(2).SetSubVector( ess_tdof, DirchVal[2][I] );
       b_vec.GetBlock(2).SetSubVector( ess_tdof, DirchVal[2][I] );
@@ -441,7 +444,7 @@ void JBvEMProblem::BuildPreconditioner()
     invS1 = new OperatorJacobiSmoother(Md_PA, ess_tdof_list);
 */
   invM  = new HypreADS(*matJJ, fespaceRT);
-  invS1 = new HypreAMS(*matBB, fespaceN);
+  invS1 = new HypreAMS(*matBB, fespaceND);
   invS2 = new HypreBoomerAMG(*matS1);
 
   invS2->SetInterpolation(6);
@@ -460,7 +463,7 @@ void JBvEMProblem::BuildPreconditioner()
 //for the Darcy problem
 void JBvEMProblem::Set_Solver(bool verbosity){
   int maxIter(75);
-  double rtol(1.e-7);
+  double rtol(1.e-10);
   double atol(1.e-10);
   solver = new MINRESSolver(MPI_COMM_WORLD);
   solver->SetAbsTol(atol);
@@ -502,12 +505,12 @@ void JBvEMProblem::SetFields(){
 
   FieldNames.push_back("B-Field");
   Fields.push_back(new ParGridFunction);
-  Fields[1]->MakeRef(fespaceN, x_vec.GetBlock(1), 0);
+  Fields[1]->MakeRef(fespaceND, x_vec.GetBlock(1), 0);
   Fields[1]->Distribute(&(tx_vec.GetBlock(1)));
 
   FieldNames.push_back("Potential");
   Fields.push_back(new ParGridFunction);
-  Fields[2]->MakeRef(fespaceL, x_vec.GetBlock(2), 0);
+  Fields[2]->MakeRef(fespaceH1, x_vec.GetBlock(2), 0);
   Fields[2]->Distribute(&(tx_vec.GetBlock(2)));
 };
 

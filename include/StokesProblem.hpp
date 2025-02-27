@@ -14,30 +14,23 @@ using namespace mfem;
 //
 // 1-D Parabolic Inlet function
 //
-void InletFunc(const Vector & x, Vector & f);
-
 void InletFunc(const Vector & x, Vector & f){
-   //double Vmax, xO;//, yO, zO, D;
    const double Vmax = 0.001;
    const double L    = 0.500;
    const double W    = 0.500;
+   const double D    = 0.000;
    const double xO   = 0.000;
    const double yO   = 0.000;
-/*
-   W  = 0.0;
-   D  = 0.0;
-   xO = 0.0;
-   yO = 0.0;
-   zO = 0.0;
-*/
+   const double zO   = 0.000;
+
    const double xC = (x(0) - xO)/L;
    const double yC = (x.Size() > 1) ? ((x(1) - yO)/W) : 0.00;
- // zC = (x.Size() > 2) ? ((x(2) - zO)/D) : 0.00;
+   const double zC = (x.Size() > 2) ? ((x(2) - zO)/D) : 0.00;
    f = 0.0;
    f(0) = 4.0*yC*(1.0 - yC)*Vmax;
   // if(x.Size() > 1) f(1) = 4.0*yC*(1.0 - yC)*Vmax;
   // if(x.Size() > 2) f(2) = 0.00;
-}
+};
 
 //
 //
@@ -63,9 +56,8 @@ class StokesUPProblem
 
     //The Bilinear forms of the block components
     // (Jacobian) (Assuming a symmetric Saddle point problem)
-    ParBilinearForm      *UU_Form=NULL;              //Bilinear type forms
-    ParMixedBilinearForm *UUForm=NULL,*UPForm=NULL;  //Mixed components
-    ParMixedBilinearForm *PUForm=NULL;               //Mixed components
+    ParBilinearForm      *UUForm=NULL;
+    ParMixedBilinearForm *UPForm=NULL, *PUForm=NULL; //Mixed components
 
     //The linear forms of the block components
     // (residual)
@@ -84,7 +76,6 @@ class StokesUPProblem
 
     //The Block hypre matrices and Transposes for Jacobian
     HypreParMatrix *matUU=NULL, *matUP=NULL, *matPU=NULL;
-    OperatorPtr OpUU1;
     OperatorPtr OpUU, OpUP, OpPU;
     TransposeOperator *UPt = NULL;
 
@@ -94,7 +85,6 @@ class StokesUPProblem
     //The Preconditioning objects
     HypreParMatrix *MinvBt = NULL, *matS1 = NULL;
     HypreParVector *Md = NULL;
-    Solver *invM=NULL;
     HypreBoomerAMG *invS1=NULL, *invM1=NULL;
 
     //Boundary Conditions
@@ -202,9 +192,7 @@ StokesUPProblem::StokesUPProblem(ParFiniteElementSpace *f1RT, ParFiniteElementSp
   // The Bilinear forms (matrix/jacobian forms)
   //
   //The Bilinear block forms
-  UU_Form  = new ParBilinearForm(fespaceH1_U); 
-
-  UUForm = new ParMixedBilinearForm(fespaceH1_U, fespaceH1_U); 
+  UUForm = new ParBilinearForm(fespaceH1_U); 
   UPForm = new ParMixedBilinearForm(fespaceH1_U, fespaceH1_P); 
   PUForm = new ParMixedBilinearForm(fespaceH1_U, fespaceH1_P);
 
@@ -213,13 +201,9 @@ StokesUPProblem::StokesUPProblem(ParFiniteElementSpace *f1RT, ParFiniteElementSp
   Array<int> ess_tdof_empty;
 
   //Set the integrators/integral forms and assemble the block matrices/bilinear forms
-  //Square Bilinear forms (for preconditioning)
-  UU_Form->AddDomainIntegrator(new VectorDiffusionIntegrator(One));
-  UU_Form->Assemble();
-
   //Mixed Bilinear forms (for solution)
-//  UUForm->AddDomainIntegrator(new VectorDiffusionIntegrator(One));
-//  UUForm->Assemble();
+  UUForm->AddDomainIntegrator(new VectorDiffusionIntegrator(One));
+  UUForm->Assemble();
 
   UPForm->AddDomainIntegrator(new VectorDivergenceIntegrator(One));
   UPForm->Assemble();
@@ -228,9 +212,7 @@ StokesUPProblem::StokesUPProblem(ParFiniteElementSpace *f1RT, ParFiniteElementSp
   PUForm->Assemble();
 
   //Set the BCs and finalize the bilinear forms (PA)
-  UU_Form->FormSystemMatrix(ess_tdof_U, OpUU1);
-
-//  UUForm->FormRectangularSystemMatrix(ess_tdof_empty, ess_tdof_U, OpUU);
+  UUForm->FormSystemMatrix(ess_tdof_U, OpUU);
   UPForm->FormRectangularSystemMatrix(ess_tdof_U,ess_tdof_empty, OpUP);
   PUForm->FormRectangularSystemMatrix(ess_tdof_empty, ess_tdof_P, OpPU);
   UPt = new TransposeOperator(OpUP.Ptr());
@@ -239,7 +221,7 @@ StokesUPProblem::StokesUPProblem(ParFiniteElementSpace *f1RT, ParFiniteElementSp
   StokesUPOp = new BlockOperator(block_trueOffsets);
 
   //Row 0
-  StokesUPOp->SetBlock(0,0, OpUU1.Ptr(), 1.0);
+  StokesUPOp->SetBlock(0,0, OpUU.Ptr(), 1.0);
   StokesUPOp->SetBlock(0,1, UPt, -1.0);
 
   //Row 1
@@ -336,8 +318,6 @@ void StokesUPProblem::SetFieldBCs(){
       tb_vec.GetBlock(0).SetSubVector(ess_tdof, 0.00 );
     }
   }
-
-
 };
 
 
@@ -348,7 +328,7 @@ void StokesUPProblem::BuildPreconditioner()
 {
   //Construct the a Schurr Complement
   //Gauss-Seidel block Preconditioner
-  matUU = static_cast<HypreParMatrix*>( OpUU1.Ptr());
+  matUU = static_cast<HypreParMatrix*>( OpUU.Ptr());
   matUP = static_cast<HypreParMatrix*>( OpUP.Ptr() );
   matPU = static_cast<HypreParMatrix*>( OpPU.Ptr() );
   (*matUP) *= -1.0; 
@@ -359,7 +339,6 @@ void StokesUPProblem::BuildPreconditioner()
   MinvBt->InvScaleRows(*Md);
   matS1  = ParMult(matUP,MinvBt);
 
-//  invM  = new HypreDiagScale(*matUU);
   invM1 = new HypreBoomerAMG(*matUU);
   invS1 = new HypreBoomerAMG(*matS1);
 

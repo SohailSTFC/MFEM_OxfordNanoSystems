@@ -7,6 +7,6 @@
 //
 class fieldDataProbes{
 
-
+Mesh mesh = Mesh::MakeCartesian1D(n, 2.0);
 
 }

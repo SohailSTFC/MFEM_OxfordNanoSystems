@@ -53,7 +53,7 @@ int main(int argc, char *argv[])
    Vector dbcv;
 
    //Mat props
-   double sig = 1.00, MU = 1.00;
+   double sig = 5.500E-06, MU = 1.257E-06;
 
    // 2. Parse command-line options.
    const char *mesh_file = "mesh/OxNanoSysU0.msh";
@@ -120,7 +120,7 @@ int main(int argc, char *argv[])
    // 7. Define a parallel finite element space on the parallel mesh. Here we
    //    use the Raviart-Thomas finite elements of the specified order.
    FiniteElementCollection *hdiv_coll(new RT_FECollection(order, dim));
-   FiniteElementCollection *HCurl_coll(new ND_FECollection(order, dim));
+   FiniteElementCollection *HCurl_coll(new ND_FECollection(order+1, dim));
    FiniteElementCollection *l2_coll(new H1_FECollection(order));
 
    ParFiniteElementSpace *R_space = new ParFiniteElementSpace(pmesh, hdiv_coll);

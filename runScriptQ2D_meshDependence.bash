@@ -17,13 +17,8 @@ ulimit -s 10240
 ## comment out lines 20-27
 ## to remove this behavior
 ##
-if [ -d "ParaView" ]; then
-  rm -rf ParaView
-fi
-if [ -d "JobData" ]; then
-else
-  mkdir JobData
-fi
+rm -rf JobData ParaView
+mkdir JobData
 mkdir ParaView
 
 ##

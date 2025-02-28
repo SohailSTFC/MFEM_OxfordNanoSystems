@@ -47,9 +47,10 @@ int main(int argc, char *argv[])
    bool verbose = (myid == 0);
 
    //Boundary condition arrays
-   Array<int> dbcs;
-   Array<int> nbcs;
-   Vector dbcv;
+   int BCsdTags   = 0;
+   double BCdVals = 0.00;
+   Array<int> BCsTags;
+   Vector     BCVals;
 
    //Mat props
    double sig = 5.500E-06, MU = 1.257E-06;
@@ -74,6 +75,18 @@ int main(int argc, char *argv[])
                   "Device configuration string, see Device::Configure().");
    args.AddOption(&sig, "-p", "--perm",
                   "The permiability of the electrolyte (Sigma).");
+
+   //Default BC values
+   args.AddOption(&BCsdTags, "-dVm", "--dbcsm",
+                  "The default boundary field marker 0.");
+   args.AddOption(&BCdVals, "-dVv", "--dbcsV",
+                  "The default boundary field value 0.00.");
+
+   //Specific values to be changed 
+   args.AddOption(&BCsTags, "-dbm", "--dbcs",
+                  "The boundary condition Markers on v-Field.");
+   args.AddOption(&BCVals, "-dbv", "--dbcv",
+                  "The boundary condition Values on v-Field.");
 
 
    args.Parse();
@@ -124,7 +137,13 @@ int main(int argc, char *argv[])
    //Set up the problem
    MemoryType mt = device.GetMemoryType();
    poissonEMproblem demoProb(W_space, sig, mt, dim);
-    
+
+   //Set the input BCs and build the Operators
+   int NewBCs = BCsTags.Size() + BCVals.Size();
+   if(NewBCs != 0) demoProb.UpdateArrayBCs(BCsdTags, BCdVals, BCsTags, BCVals);
+   demoProb.BuildOperator();
+
+
    //Set the solver and preconditioner
    demoProb.BuildPreconditioner();
    demoProb.Set_Solver(verbose);

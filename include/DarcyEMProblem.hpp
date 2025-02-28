@@ -22,7 +22,7 @@ class DarcyEMProblem
 
     //Finite element spaces
     ParFiniteElementSpace *fespaceRT=NULL; //Raviart Thomas elements
-    ParFiniteElementSpace *fespaceL=NULL;  //Lagrange finite element space
+    ParFiniteElementSpace *fespaceH1=NULL;  //Lagrange finite element space
 
     //Block Matrix structure offsets
     Array<int> block_offsets;     // number of variables + 1 (2-variables J and v)
@@ -70,12 +70,11 @@ class DarcyEMProblem
     Array<int> ess_tdof_J, ess_tdof_v;     //Dirchelet BC DOF's
     Array<int> ess_bdr_J, ess_bdr_v;       //Dirchelet BC Tag's
   
-    //Read in and set the Boundary conditions
+    //Set the default Boundary conditions
     void SetBCsArrays();
 
-    //Read in and set the Boundary conditions
+    //Set the Boundary conditions before solving
     void SetFieldBCs();
-
   public:
     //The fields (Needed for postprocessing)
     //Made public for external access (not a great solution
@@ -86,6 +85,13 @@ class DarcyEMProblem
     //The constructor
     DarcyEMProblem(ParFiniteElementSpace *f1, ParFiniteElementSpace *f2
 	             , double sig, MemoryType deviceMT, int dim);
+
+    //Read in and set the Boundary conditions
+    void UpdateArrayBCs(const Array<int>& BCsdTags, const Vector & BCdVals
+	                  , const Array<Array<int>*>& BCsTags, const Array<Vector*>& BCVals);
+
+    //Build the problem operator
+    void BuildOperator();
 
     //Build and set a Preconditioner for the solver
     void BuildPreconditioner();
@@ -120,10 +126,10 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
 {
   DIM = dim;
   fespaceRT = new ParFiniteElementSpace(*f1RT);
-  fespaceL  = new ParFiniteElementSpace(*f2L);
+  fespaceH1  = new ParFiniteElementSpace(*f2L);
 
   HYPRE_BigInt dimR = fespaceRT->GlobalTrueVSize();
-  HYPRE_BigInt dimW = fespaceL->GlobalTrueVSize();
+  HYPRE_BigInt dimW = fespaceH1->GlobalTrueVSize();
 
   std::cout << "***********************************************************\n";
   std::cout << "dim(R) = " << dimR << "\n";
@@ -137,17 +143,17 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
   Array<int> bofs(3); // number of variables + 1
   bofs[0] = 0;
   bofs[1] = fespaceRT->GetVSize();
-  bofs[2] = fespaceL->GetVSize();
+  bofs[2] = fespaceH1->GetVSize();
   bofs.PartialSum();
 
   Array<int> btofs(3); // number of variables + 1
   btofs[0] = 0;
   btofs[1] = fespaceRT->TrueVSize();
-  btofs[2] = fespaceL->TrueVSize();
+  btofs[2] = fespaceH1->TrueVSize();
   btofs.PartialSum();
  
-  block_offsets     = Array<int>(bofs);
-  block_trueOffsets = Array<int>(btofs);
+  block_offsets     = *(new Array<int>(bofs));
+  block_trueOffsets = *(new Array<int>(btofs));
 
 
   // 10. Define the parallel grid function and parallel linear forms, solution
@@ -172,13 +178,11 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
   //The Bilinear block forms
   JJForm  = new ParBilinearForm(fespaceRT); 
   JJ_Form = new ParMixedBilinearForm(fespaceRT, fespaceRT); 
-  JVForm  = new ParMixedBilinearForm(fespaceRT, fespaceL);
-  VJForm  = new ParMixedBilinearForm(fespaceRT, fespaceL);
-
+  JVForm  = new ParMixedBilinearForm(fespaceRT, fespaceH1);
+  VJForm  = new ParMixedBilinearForm(fespaceRT, fespaceH1);
 
   //Setting the boundary conditions
   SetBCsArrays();
-  Array<int> ess_tdof_empty;
 
   //Set the integrators/integral forms and assemble the block matrices/bilinear forms
   JJForm->AddDomainIntegrator(new VectorFEMassIntegrator(k));
@@ -192,6 +196,12 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
 
   VJForm->AddDomainIntegrator(new MixedVectorWeakDivergenceIntegrator);
   VJForm->Assemble();
+};
+
+
+//Build the problem operator
+void DarcyEMProblem::BuildOperator(){
+  Array<int> ess_tdof_empty;
 
   //Set the BCs and finalize the bilinear forms (PA)
   JJForm->FormSystemMatrix(ess_tdof_empty, opM1);
@@ -207,63 +217,124 @@ DarcyEMProblem::DarcyEMProblem(ParFiniteElementSpace *f1RT
   darcyEMOp->SetBlock(1,0, opC.Ptr(), -1.0);
 };
 
-//Sets the natural and essential boundary
-//conditions
-void DarcyEMProblem::SetBCsArrays(){
+
+//Set the default Boundary conditions
+void DarcyEMProblem::SetBCsArrays(){ //Default case
+  int nJTags = fespaceRT->GetMesh()->bdr_attributes.Max();
+  int nVTags = fespaceH1->GetMesh()->bdr_attributes.Max();
+  int nTagsMax = std::max(nVTags,nJTags);
+
   //Essential boundary condition tags
-  ess_bdr_J = Array<int>(fespaceRT->GetMesh()->bdr_attributes.Max());
-  ess_bdr_v = Array<int>(fespaceL->GetMesh()->bdr_attributes.Max());
+  ess_bdr_J = Array<int>(nJTags);
+  ess_bdr_v = Array<int>(nVTags);
 
   //initialise the arrays
-  ess_bdr_J = 1;
-  ess_bdr_v = 0;
+  ess_bdr_J = 1; //assume fixed (no-Flux)
+  ess_bdr_v = 0; //assume unfixed (Free potential)
 
-  //fixed J
-  ess_bdr_J[0] = 0;
-  ess_bdr_J[1] = 0;
-  ess_bdr_J[2] = 0;
+  if(nTagsMax > 3){
+    //un-fixed J
+    ess_bdr_J[0] = 0;
+    ess_bdr_J[1] = 0;
+    ess_bdr_J[2] = 0;
 
-  //fixed v
-  ess_bdr_v[0] = 1;
-  ess_bdr_v[1] = 1;
-  ess_bdr_v[2] = 1;
+    //fixed v
+    ess_bdr_v[0] = 1;
+    ess_bdr_v[1] = 1;
+    ess_bdr_v[2] = 1;
+  }
 
   //Find the True Dofs
   fespaceRT->GetEssentialTrueDofs(ess_bdr_J, ess_tdof_J);
-  fespaceL->GetEssentialTrueDofs(ess_bdr_v, ess_tdof_v);
-
-  cout << setw(10) << "RT elements: " << setw(10) << ess_tdof_J.Size() << "\n";
-  cout << setw(10) << "H1 elements: " << setw(10) << ess_tdof_v.Size() << "\n";
+  fespaceH1->GetEssentialTrueDofs(ess_bdr_v, ess_tdof_v);
 
   //The Dirchelet BC values
   vector<double> DirchVal_tmp;
   DirchVal.clear();
   DirchVal_tmp.clear();
-  
+  for(int I=0; I<nTagsMax; I++) DirchVal_tmp.push_back(0.00);
+
   //J-Field BC-values
-  DirchVal_tmp.push_back(0.00); // N/A
-  DirchVal_tmp.push_back(0.00); // N/A
-  DirchVal_tmp.push_back(0.00); // N/A
-  DirchVal_tmp.push_back(0.00); // n.J = 0
-  DirchVal_tmp.push_back(0.00); // N/A
+  for(int I=0; I<nTagsMax; I++) DirchVal_tmp[I] = 0.00;
   DirchVal.push_back(DirchVal_tmp);
 
   //v-Field BC-values
-  DirchVal_tmp[0] = 0.00; // Fixed v = c
-  DirchVal_tmp[1] = 3.00; // Fixed v = c
-  DirchVal_tmp[2] = 3.00; // Fixed v = c
-  DirchVal_tmp[3] = 0.00; // N/A
-  DirchVal_tmp[4] = 0.00; // N/A
+  for(int I=0; I<nTagsMax; I++) DirchVal_tmp[I] = 0.00;
+  if(nTagsMax > 3){
+    DirchVal_tmp[1] = 3.00; // Fixed v = c
+    DirchVal_tmp[2] = 3.00; // Fixed v = c
+  }
   DirchVal.push_back(DirchVal_tmp);
+
+  //clear the tmp arrays
   DirchVal_tmp.clear();
 };
+
+
+
+//Read in and set the Boundary conditions
+void DarcyEMProblem::UpdateArrayBCs(const Array<int>& BCsdTags, const Vector & BCdVals
+	                              , const Array<Array<int>*>& BCsTags, const Array<Vector*>& BCVals)
+{
+  int nJTags = fespaceRT->GetMesh()->bdr_attributes.Max();
+  int nVTags = fespaceH1->GetMesh()->bdr_attributes.Max();
+  int nTagsMax = std::max(nVTags,nJTags);
+
+  //Initialise the arrays with the default tags
+  ess_bdr_J = BCsdTags[0];
+  ess_bdr_v = BCsdTags[1];
+
+  //Set the Tag value that opposes the default
+  int OppTagValJ = ((BCsdTags[0] == 1) ? 0 : 1);
+  int OppTagValV = ((BCsdTags[1] == 1) ? 0 : 1);
+
+  //Set the tags
+  if( BCsTags.Size() == 2){//Only do this if the size is correct
+    for(int I=0; I<2; I++){
+      if((BCsTags[1]->Size() > 0)and(BCsTags[1] != NULL)){//Makes sure array if not empty/NULL
+        for(int J=0; J<BCsTags[I]->Size(); J++){
+          int K = (*BCsTags[I])[J];
+          if((K > nTagsMax)and(K < 0)) continue;
+          if(I==0)ess_bdr_J[K] = OppTagValJ;
+          if(I==1)ess_bdr_v[K] = OppTagValV;
+        }
+      }
+    }
+  }
+
+  //Find the True Dofs
+  fespaceRT->GetEssentialTrueDofs(ess_bdr_J, ess_tdof_J);
+  fespaceH1->GetEssentialTrueDofs(ess_bdr_v, ess_tdof_v);
+
+  //J-Field and v-Field BC-values Defaults
+  for(int I=0; I<nTagsMax; I++) DirchVal[0][I] = BCdVals[0];
+  for(int I=0; I<nTagsMax; I++) DirchVal[1][I] = BCdVals[1];
+
+
+  //J-Field and v-Field BC-values Unique
+  if(BCVals.Size() == BCsTags.Size()){//Check whether Meta Array values correspond
+    if( BCsTags.Size() == 2){//Only do this if the size is correct
+      for(int I=0; I<2; I++){//Loop over all fields
+        if((BCsTags[I]->Size() > 0)and(BCsTags[I] != NULL)){//Makes sure array if not empty/NULL
+          for(int J=0; J<BCsTags[I]->Size(); J++){
+            int K = (*BCsTags[I])[J];
+            if((K > nTagsMax)or(K < 0)) continue;
+            DirchVal[I][K] =  (*BCVals[I])[J];
+          }
+        }
+      }
+    }
+  }
+  //End of function
+};
+
 
 //Set the BCs by setting the solution vectors and
 void DarcyEMProblem::SetFieldBCs(){
   //Set the boundary Solution function for
   //the current field
   int nJ_tags = fespaceRT->GetMesh()->bdr_attributes.Max();
-  int nv_tags = fespaceL->GetMesh()->bdr_attributes.Max();
+  int nv_tags = fespaceH1->GetMesh()->bdr_attributes.Max();
 
   cout << setw(10) << "RT element Tags: " << setw(10) << nJ_tags << "\n";
   cout << setw(10) << "H1 element Tags: " << setw(10) << nv_tags << "\n";
@@ -297,7 +368,7 @@ void DarcyEMProblem::SetFieldBCs(){
       Array<int> ess_tdof, ess_bdr_tmp(nv_tags);
       ess_bdr_tmp = 0;
       ess_bdr_tmp[I] = 1;
-      fespaceL->GetEssentialTrueDofs(ess_bdr_tmp, ess_tdof);
+      fespaceH1->GetEssentialTrueDofs(ess_bdr_tmp, ess_tdof);
       cout << setw(10) << I << setw(10) << ess_tdof.Size() << "\n";
       x_vec.GetBlock(1).SetSubVector( ess_tdof, DirchVal[1][I] );
       b_vec.GetBlock(1).SetSubVector( ess_tdof, DirchVal[1][I] );
@@ -313,6 +384,8 @@ void DarcyEMProblem::SetFieldBCs(){
 
 void DarcyEMProblem::BuildPreconditioner()
 {
+  if(darcyEMOp == NULL) throw("Error Problem Operator not built");
+
   //Construct the a Schurr Complement
   //Gauss-Seidel block Preconditioner
   matM = static_cast<HypreParMatrix*>( opM1.Ptr() );
@@ -387,7 +460,7 @@ void DarcyEMProblem::SetFields(){
 
   FieldNames.push_back("Potential");
   Fields.push_back(new ParGridFunction);
-  Fields[1]->MakeRef(fespaceL, x_vec.GetBlock(1), 0);
+  Fields[1]->MakeRef(fespaceH1, x_vec.GetBlock(1), 0);
   Fields[1]->Distribute(&(tx_vec.GetBlock(1)));
 };
 

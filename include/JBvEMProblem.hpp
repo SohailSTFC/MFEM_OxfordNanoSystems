@@ -272,7 +272,8 @@ void JBvEMProblem::SetBCsArrays(){
   int nJTags = fespaceRT->GetMesh()->bdr_attributes.Max();
   int nBTags = fespaceND->GetMesh()->bdr_attributes.Max();
   int nVTags = fespaceH1->GetMesh()->bdr_attributes.Max();
-  
+  int nMaxTags = max(nVTags,max(nBTags,nJTags));
+ 
   ess_bdr_J = Array<int>(nJTags);
   ess_bdr_B = Array<int>(nBTags);
   ess_bdr_v = Array<int>(nVTags);
@@ -287,11 +288,6 @@ void JBvEMProblem::SetBCsArrays(){
   ess_bdr_J[1] = 0;
   ess_bdr_J[2] = 0;
 
-  //fixed B
-//  ess_bdr_B[0] = 1;
-//  ess_bdr_B[1] = 1;
-//  ess_bdr_B[2] = 1;
-
   //fixed v
   ess_bdr_v[0] = 1;
   ess_bdr_v[1] = 1;
@@ -302,37 +298,24 @@ void JBvEMProblem::SetBCsArrays(){
   fespaceRT->GetEssentialTrueDofs(ess_bdr_B, ess_tdof_B);
   fespaceH1->GetEssentialTrueDofs(ess_bdr_v, ess_tdof_v);
 
-  cout << setw(10) << "RT elements: " << setw(10) << ess_tdof_J.Size() << "\n";
-  cout << setw(10) << "ND elements: " << setw(10) << ess_tdof_B.Size() << "\n";
-  cout << setw(10) << "H1 elements: " << setw(10) << ess_tdof_v.Size() << "\n";
-
   //The Dirchelet BC values
   vector<double> DirchVal_tmp;
   DirchVal.clear();
   DirchVal_tmp.clear();
-  
+  for(int I=0; I<nMaxTags; I++) DirchVal_tmp.push_back(0.00); 
+
   //J-Field BC-values
-  DirchVal_tmp.push_back(0.00); // N/A
-  DirchVal_tmp.push_back(0.00); // N/A
-  DirchVal_tmp.push_back(0.00); // N/A
-  DirchVal_tmp.push_back(0.00); // n.J = 0
-  DirchVal_tmp.push_back(0.00); // N/A
+  for(int I=0; I<nMaxTags; I++) DirchVal_tmp[I] = 0.00; 
   DirchVal.push_back(DirchVal_tmp);
 
   //B-Field BC-values
-  DirchVal_tmp[0] = 0.00; // Fixed B = c
-  DirchVal_tmp[1] = 0.00; // Fixed B = c
-  DirchVal_tmp[2] = 0.00; // Fixed B = c
-  DirchVal_tmp[3] = 0.00; // N/A
-  DirchVal_tmp[4] = 0.00; // N/A
+  for(int I=0; I<nMaxTags; I++) DirchVal_tmp[I] = 0.00; 
   DirchVal.push_back(DirchVal_tmp);
 
   //v-Field BC-values
-  DirchVal_tmp[0] = 0.00; // Fixed v = c
+  for(int I=0; I<nMaxTags; I++) DirchVal_tmp[I] = 0.00; 
   DirchVal_tmp[1] = 3.00; // Fixed v = c
   DirchVal_tmp[2] = 3.00; // Fixed v = c
-  DirchVal_tmp[3] = 0.00; // N/A
-  DirchVal_tmp[4] = 0.00; // N/A
   DirchVal.push_back(DirchVal_tmp);
   DirchVal_tmp.clear();
 };

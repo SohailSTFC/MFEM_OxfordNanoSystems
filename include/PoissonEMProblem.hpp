@@ -21,7 +21,7 @@ class poissonEMproblem
     int DIM;
 
     //Finite element spaces
-    ParFiniteElementSpace *fespaceL=NULL;  //Lagrange finite element space
+    ParFiniteElementSpace *fespaceH1=NULL;  //Lagrange finite element space
 
     //Block Matrix structure offsets
     Array<int> block_offsets;     // number of variables + 1 (2-variables J and v)
@@ -60,7 +60,7 @@ class poissonEMproblem
     //Boundary Conditions
     vector<vector<double>> DirchVal;  //Dirchelet value of BC
     Array<int>  ess_tdof_v;           //Dirchelet BC DOF's
-    Array<int>  ess_bdr_v, ess_bdr_J; //Dirchelet BC Tag's
+    Array<int>  ess_bdr_v;            //Dirchelet BC Tag's
   
     //Read in and set the Boundary conditions
     void SetBCsArrays();
@@ -77,6 +77,13 @@ class poissonEMproblem
 
     //The constructor
     poissonEMproblem(ParFiniteElementSpace *f1, double sig, MemoryType deviceMT, int dim);
+
+    //Read in and set the Boundary conditions
+    void UpdateArrayBCs(const int & BCsdTags, const double & BCdVals
+	                  , const Array<int> & BCsTags, const Vector & BCVals);
+
+    //Build the problem operator
+    void BuildOperator();
 
     //Build and set a Preconditioner for the solver
     void BuildPreconditioner();
@@ -109,8 +116,8 @@ poissonEMproblem::poissonEMproblem(ParFiniteElementSpace *fL
 : sigma(sig)
 {
   DIM = dim;
-  fespaceL  = new ParFiniteElementSpace(*fL);
-  HYPRE_BigInt dimW = fespaceL->GlobalTrueVSize();
+  fespaceH1  = new ParFiniteElementSpace(*fL);
+  HYPRE_BigInt dimW = fespaceH1->GlobalTrueVSize();
 
   std::cout << "***********************************************************\n";
   std::cout << "dim(W) = " << dimW << "\n";
@@ -121,12 +128,12 @@ poissonEMproblem::poissonEMproblem(ParFiniteElementSpace *fL
   // and matrix operators
   Array<int> bofs(2); // number of variables + 1
   bofs[0] = 0;
-  bofs[1] = fespaceL->GetVSize();
+  bofs[1] = fespaceH1->GetVSize();
   bofs.PartialSum();
 
   Array<int> btofs(2); // number of variables + 1
   btofs[0] = 0;
-  btofs[1] = fespaceL->TrueVSize();
+  btofs[1] = fespaceH1->TrueVSize();
   btofs.PartialSum();
  
   block_offsets     = Array<int>(bofs);
@@ -155,9 +162,15 @@ poissonEMproblem::poissonEMproblem(ParFiniteElementSpace *fL
   // The Bilinear forms (matrix/jacobian forms)
   //
   Array<int> ess_tdof_empty;
-  VV_Form = new ParMixedBilinearForm(fespaceL, fespaceL);
+  VV_Form = new ParMixedBilinearForm(fespaceH1, fespaceH1);
   VV_Form->AddDomainIntegrator(new DiffusionIntegrator(k));
   VV_Form->Assemble();
+};
+
+
+//Build the problem operator
+void poissonEMproblem::BuildOperator(){
+  Array<int> ess_tdof_empty;
   VV_Form->FormRectangularSystemMatrix(ess_tdof_empty, ess_tdof_v, opM);
 
   //Set the block matrix operator
@@ -165,51 +178,89 @@ poissonEMproblem::poissonEMproblem(ParFiniteElementSpace *fL
   poissonEMOp->SetBlock(0,0, opM.Ptr());
 };
 
-//Sets the natural and essential boundary
+//Sets the default boundary
 //conditions
 void poissonEMproblem::SetBCsArrays(){
-  //Essential boundary condition tags
-  ess_bdr_v = Array<int>(fespaceL->GetMesh()->bdr_attributes.Max());
-  ess_bdr_J = Array<int>(fespaceL->GetMesh()->bdr_attributes.Max());
+  //Boundary condition tags
+  int nTagsMax = fespaceH1->GetMesh()->bdr_attributes.Max();
+  ess_bdr_v = Array<int>(nTagsMax);
 
   //initialise the arrays
   ess_bdr_v = 0;
-  ess_bdr_J = 1;
 
   //fixed v
-  ess_bdr_v[0] = 1;
-  ess_bdr_v[1] = 1;
-  ess_bdr_v[2] = 1;
-
-  //not fixed n.Grad(v)
-  ess_bdr_J[0] = 0;
-  ess_bdr_J[1] = 0;
-  ess_bdr_J[2] = 0;
+  if(nTagsMax > 3){
+    ess_bdr_v[0] = 1;
+    ess_bdr_v[1] = 1;
+    ess_bdr_v[2] = 1;
+  }
 
   //Find the True Dofs
-  fespaceL->GetEssentialTrueDofs(ess_bdr_v, ess_tdof_v);
-  cout << setw(10) << "H1 elements: " << setw(10) << ess_tdof_v.Size() << "\n";
+  fespaceH1->GetEssentialTrueDofs(ess_bdr_v, ess_tdof_v);
 
   //The Dirchelet BC values
   vector<double> DirchVal_tmp;
   DirchVal.clear();
   DirchVal_tmp.clear();
-
+  for(int I=0; I<nTagsMax; I++) DirchVal_tmp.push_back( 0.00);
+  
   //v-Field BC-values
-  DirchVal_tmp.push_back( 0.00); // Fixed v = c
-  DirchVal_tmp.push_back( 3.00); // Fixed v = c
-  DirchVal_tmp.push_back( 3.00); // Fixed v = c
-  DirchVal_tmp.push_back( 0.00); // N/A
-  DirchVal_tmp.push_back( 0.00); // N/A
+  if(nTagsMax > 3){
+    DirchVal_tmp[1] = 3.00; // Fixed v = c
+    DirchVal_tmp[2] = 3.00; // Fixed v = c
+  }
   DirchVal.push_back(DirchVal_tmp);
   DirchVal_tmp.clear();
 };
+
+
+//Read in and set the Boundary conditions
+void poissonEMproblem::UpdateArrayBCs(const int & BCsdTags, const double & BCdVals
+	                              , const Array<int>& BCsTags, const Vector & BCVals)
+{
+  //Number of boundary tags
+  int nTagsMax = fespaceH1->GetMesh()->bdr_attributes.Max();
+
+  //Initialise the arrays with the default tag
+  ess_bdr_v = BCsdTags;
+
+  //Set the Tag value that opposes the default
+  int OppTagValV = ((BCsdTags == 1) ? 0 : 1);
+
+  //Set the tags
+  if((BCsTags.Size() > 0)and(BCsTags != NULL)){//Makes sure array if not empty/NULL
+    for(int J=0; J<BCsTags.Size(); J++){
+      int K = BCsTags[J];
+      if((K > nTagsMax)and(K < 0)) continue;
+      ess_bdr_v[K] = OppTagValV;
+    }
+  }
+
+  //Find the True Dofs
+  fespaceH1->GetEssentialTrueDofs(ess_bdr_v, ess_tdof_v);
+
+  //v-Field BC-values Defaults
+  for(int I=0; I<nTagsMax; I++) DirchVal[0][I] = BCdVals;
+
+  //v-Field BC-values Unique
+  if(BCVals.Size() == BCsTags.Size()){//Check whether the number of Array values correspond
+    if((BCsTags.Size() > 0)and(BCsTags != NULL)){//Makes sure array if not empty/NULL
+      for(int J=0; J<BCsTags.Size(); J++){
+        int K = BCsTags[J];
+        if((K > nTagsMax)or(K < 0)) continue;
+        DirchVal[0][K] =  BCVals[J];
+      }
+    }
+  }
+  //End of function
+};
+
 
 //Set the BCs by setting the solution vectors and
 void poissonEMproblem::SetFieldBCs(){
   //Set the boundary Solution function for
   //the current field
-  int nv_tags = fespaceL->GetMesh()->bdr_attributes.Max();
+  int nv_tags = fespaceH1->GetMesh()->bdr_attributes.Max();
   cout << setw(10) << "H1 element Tags: " << setw(10) << nv_tags << "\n";
   x_vec.GetBlock(0)  = 0.2;
   tx_vec.GetBlock(0) = 0.2;
@@ -223,7 +274,7 @@ void poissonEMproblem::SetFieldBCs(){
       Array<int> ess_tdof, ess_bdr_tmp(nv_tags);
       ess_bdr_tmp = 0;
       ess_bdr_tmp[I] = 1;
-      fespaceL->GetEssentialTrueDofs(ess_bdr_tmp, ess_tdof);
+      fespaceH1->GetEssentialTrueDofs(ess_bdr_tmp, ess_tdof);
       cout << setw(10) << I << setw(10) << ess_tdof.Size() << "\n";
       x_vec.GetBlock(0).SetSubVector(  ess_tdof, DirchVal[0][I] );
       b_vec.GetBlock(0).SetSubVector(  ess_tdof, DirchVal[0][I] );
@@ -294,7 +345,7 @@ void poissonEMproblem::Solve(bool verbosity){
 void poissonEMproblem::SetFields(){
   FieldNames.push_back("Potential");
   Fields.push_back(new ParGridFunction);
-  Fields[0]->MakeRef(fespaceL, x_vec.GetBlock(0), 0);
+  Fields[0]->MakeRef(fespaceH1, x_vec.GetBlock(0), 0);
   Fields[0]->Distribute(&(tx_vec.GetBlock(0)) );
 };
 

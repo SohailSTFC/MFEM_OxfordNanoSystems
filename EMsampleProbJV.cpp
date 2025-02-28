@@ -49,6 +49,12 @@ int main(int argc, char *argv[])
    Array<int> dbcs;
    Array<int> nbcs;
    Vector dbcv;
+   Vector nbcv;
+
+   Array<int> BCsdTags({1, 0});
+   Vector BCdVals({0.00, 0.00});
+   Array<Array<int>*> BCsTags(2);
+   Array<Vector*>     BCVals(2);
 
    //Mat props
    double sig = 5.500E-06, MU = 1.257E-06;
@@ -74,6 +80,21 @@ int main(int argc, char *argv[])
    args.AddOption(&sig, "-p", "--perm",
                   "The permiability of the electrolyte (Sigma).");
 
+   //Default BC values
+   args.AddOption(&BCsdTags, "-dJVm", "--dbcsm",
+                  "The default boundary field markers 1 0.");
+   args.AddOption(&BCdVals, "-dJVv", "--dbcsV",
+                  "The default boundary field values 0.00 0.00.");
+
+   //Specific values to be changed 
+   args.AddOption(&dbcs, "-dbm", "--dbcs",
+                  "The boundary condition Markers on v-Field.");
+   args.AddOption(&dbcv, "-dbv", "--dbcv",
+                  "The boundary condition Values on v-Field.");
+   args.AddOption(&nbcs, "-nbm", "--nbcs",
+                  "The natural boundary condition Markers on n.J boundary.");
+   args.AddOption(&nbcv, "-nbv", "--nbcv",
+                  "The natural boundary condition Values on n.J boundary.");
 
    args.Parse();
    if (!args.Good())
@@ -93,8 +114,6 @@ int main(int argc, char *argv[])
    //    and volume meshes with the same code.
    Mesh *mesh = new Mesh(mesh_file, 1, 1);
    int dim = mesh->Dimension();
-
-
 
    // 5. Refine the serial mesh on all processors to increase the resolution. In
    //    this example we do 'ref_levels' of uniform refinement. We choose
@@ -126,7 +145,17 @@ int main(int argc, char *argv[])
    //Set up the problem
    MemoryType mt = device.GetMemoryType();
    DarcyEMProblem demoProb(R_space, W_space, sig, mt, dim);
-    
+
+
+   //Set the input BCs and build the Operators
+   BCsTags[0] = &dbcs;
+   BCsTags[1] = &nbcs;
+   BCVals[0]  = &dbcv;
+   BCVals[1]  = &nbcv;
+   int NewBCs = dbcs.Size() +  nbcs.Size() + dbcv.Size() + nbcv.Size();
+   if(NewBCs != 0) demoProb.UpdateArrayBCs(BCsdTags, BCdVals, BCsTags, BCVals);
+   demoProb.BuildOperator();
+
    //Set the solver and preconditioner
    demoProb.BuildPreconditioner();
    demoProb.Set_Solver(verbose);

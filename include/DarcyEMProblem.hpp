@@ -291,7 +291,7 @@ void DarcyEMProblem::UpdateArrayBCs(const Array<int>& BCsdTags, const Vector & B
   //Set the tags
   if( BCsTags.Size() == 2){//Only do this if the size is correct
     for(int I=0; I<2; I++){
-      if((BCsTags[1]->Size() > 0)and(BCsTags[1] != NULL)){//Makes sure array if not empty/NULL
+      if((BCsTags[I]->Size() > 0)and(BCsTags[I] != NULL)){//Makes sure array if not empty/NULL
         for(int J=0; J<BCsTags[I]->Size(); J++){
           int K = (*BCsTags[I])[J];
           if((K > nTagsMax)and(K < 0)) continue;
@@ -307,8 +307,9 @@ void DarcyEMProblem::UpdateArrayBCs(const Array<int>& BCsdTags, const Vector & B
   fespaceH1->GetEssentialTrueDofs(ess_bdr_v, ess_tdof_v);
 
   //J-Field and v-Field BC-values Defaults
-  for(int I=0; I<nTagsMax; I++) DirchVal[0][I] = BCdVals[0];
-  for(int I=0; I<nTagsMax; I++) DirchVal[1][I] = BCdVals[1];
+  for(int J=0; J<2; J++) 
+    for(int I=0; I<nTagsMax; I++) 
+      DirchVal[J][I] = BCdVals[J];
 
 
   //J-Field and v-Field BC-values Unique
@@ -333,47 +334,32 @@ void DarcyEMProblem::UpdateArrayBCs(const Array<int>& BCsdTags, const Vector & B
 void DarcyEMProblem::SetFieldBCs(){
   //Set the boundary Solution function for
   //the current field
-  int nJ_tags = fespaceRT->GetMesh()->bdr_attributes.Max();
-  int nv_tags = fespaceH1->GetMesh()->bdr_attributes.Max();
+  int nJTags = fespaceRT->GetMesh()->bdr_attributes.Max();
+  int nVTags = fespaceH1->GetMesh()->bdr_attributes.Max();
+  int nTagsMax = max(nVTags,nJTags);
 
-  cout << setw(10) << "RT element Tags: " << setw(10) << nJ_tags << "\n";
-  cout << setw(10) << "H1 element Tags: " << setw(10) << nv_tags << "\n";
   x_vec.GetBlock(1) = 0.2;
   tx_vec.GetBlock(1) = 0.2;
 
   //Set the J-Field BCs by looping over the
   //active boundaries
-  cout << setw(10) << "RT elements: " << setw(10) << ess_tdof_J.Size() << "\n";
-  for(int I=0; I<nJ_tags; I++){
-    int K = ess_bdr_J[I];
-    if(K == 1){ //Checks if boundary is active
-      Array<int> ess_tdof, ess_bdr_tmp(nJ_tags);
-      ess_bdr_tmp = 0;
-      ess_bdr_tmp[I] = 1;
-      fespaceRT->GetEssentialTrueDofs(ess_bdr_tmp, ess_tdof);
-      cout << setw(10) << I << setw(10) << ess_tdof.Size() << "\n";
-      x_vec.GetBlock(0).SetSubVector( ess_tdof, DirchVal[0][I] );
-      b_vec.GetBlock(0).SetSubVector( ess_tdof, DirchVal[0][I] );
-      tx_vec.GetBlock(0).SetSubVector( ess_tdof, DirchVal[0][I] );
-      tb_vec.GetBlock(0).SetSubVector( ess_tdof, DirchVal[0][I] );
-    }
-  }
-
-  //Set the J-Field BCs by looping over the
-  //active boundaries
-  cout << setw(10) << "H1 elements: " << setw(10) << ess_tdof_v.Size() << "\n";
-  for(int I=0; I<nv_tags; I++){
-    int K = ess_bdr_v[I];
-    if(K == 1){ //Checks if boundary is active
-      Array<int> ess_tdof, ess_bdr_tmp(nv_tags);
-      ess_bdr_tmp = 0;
-      ess_bdr_tmp[I] = 1;
-      fespaceH1->GetEssentialTrueDofs(ess_bdr_tmp, ess_tdof);
-      cout << setw(10) << I << setw(10) << ess_tdof.Size() << "\n";
-      x_vec.GetBlock(1).SetSubVector( ess_tdof, DirchVal[1][I] );
-      b_vec.GetBlock(1).SetSubVector( ess_tdof, DirchVal[1][I] );
-      tx_vec.GetBlock(1).SetSubVector( ess_tdof, DirchVal[1][I] );
-      tb_vec.GetBlock(1).SetSubVector( ess_tdof, DirchVal[1][I] );
+  for(int P=0; P <2; P++){ //Over all field-blocks
+    for(int I=0; I<nTagsMax; I++){
+      int K=0;
+      if((P==0)and(I < nJTags)) K = ess_bdr_J[I];
+      if((P==1)and(I < nVTags)) K = ess_bdr_v[I];
+      if(K == 1){ //Checks if boundary is active
+        Array<int> ess_tdof, ess_bdr_tmp(nTagsMax);
+        ess_bdr_tmp = 0;
+        ess_bdr_tmp[I] = 1;
+        if(P==0) fespaceRT->GetEssentialTrueDofs(ess_bdr_tmp, ess_tdof);
+        if(P==1) fespaceH1->GetEssentialTrueDofs(ess_bdr_tmp, ess_tdof);
+	  
+        x_vec.GetBlock(P).SetSubVector( ess_tdof, DirchVal[P][I] );
+        b_vec.GetBlock(P).SetSubVector( ess_tdof, DirchVal[P][I] );
+        tx_vec.GetBlock(P).SetSubVector( ess_tdof, DirchVal[P][I] );
+        tb_vec.GetBlock(P).SetSubVector( ess_tdof, DirchVal[P][I] );
+      }
     }
   }
 };
@@ -381,7 +367,6 @@ void DarcyEMProblem::SetFieldBCs(){
 
 //Builds a preconditioner needed to
 //accelerate the Darcy problem solver (Optional)
-
 void DarcyEMProblem::BuildPreconditioner()
 {
   if(darcyEMOp == NULL) throw("Error Problem Operator not built");

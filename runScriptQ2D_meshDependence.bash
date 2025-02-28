@@ -21,10 +21,10 @@ if [ -d "ParaView" ]; then
   rm -rf ParaView
 fi
 if [ -d "JobData" ]; then
-  rm -rf JobData
+else
+  mkdir JobData
 fi
 mkdir ParaView
-mkdir JobData
 
 ##
 ## Unshielded Cases

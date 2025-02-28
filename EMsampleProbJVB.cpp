@@ -50,7 +50,15 @@ int main(int argc, char *argv[])
    //Boundary condition arrays
    Array<int> dbcs;
    Array<int> nbcs;
+   Array<int> ebcs;
    Vector dbcv;
+   Vector nbcv;
+   Vector ebcv;
+
+   Array<int> BCsdTags({1, 0, 0});
+   Vector BCdVals({0.00, 0.00, 0.00});
+   Array<Array<int>*> BCsTags(3);
+   Array<Vector*>     BCVals(3);
 
    //Mat props
    double sig = 5.500E-06, MU = 1.257E-06;
@@ -76,6 +84,25 @@ int main(int argc, char *argv[])
    args.AddOption(&sig, "-p", "--perm",
                   "The permiability of the electrolyte (Sigma).");
 
+   //Default BC values
+   args.AddOption(&BCsdTags, "-dJVbm", "--dbcsm",
+                  "The default boundary field markers 1 0 0");
+   args.AddOption(&BCdVals, "-dJVbv", "--dbcsV",
+                  "The default boundary field values 0.00 0.00 0.00");
+
+   //Specific values to be changed 
+   args.AddOption(&dbcs, "-dbm", "--dbcs",
+                  "The boundary condition Markers on v-Field.");
+   args.AddOption(&dbcv, "-dbv", "--dbcv",
+                  "The boundary condition Values on v-Field.");
+   args.AddOption(&nbcs, "-nbm", "--nbcs",
+                  "The J-Field boundary condition Markers on n.J boundary.");
+   args.AddOption(&nbcv, "-nbv", "--nbcv",
+                  "The J-Field boundary condition Values on n.J boundary.");
+   args.AddOption(&ebcs, "-nbm", "--nbcs",
+                  "The B-field boundary condition Markers on n.J boundary.");
+   args.AddOption(&ebcv, "-nbv", "--nbcv",
+                  "The B-field boundary condition Values on n.J boundary.");
 
    args.Parse();
    if (!args.Good())
@@ -130,6 +157,18 @@ int main(int argc, char *argv[])
    //Set up the problem
    MemoryType mt = device.GetMemoryType();
    JBvEMProblem demoProb(R_space, B_space, W_space, &sig, &MU, mt, dim);
+
+   //Set the input BCs and build the Operators
+   BCsTags[0] = &dbcs;
+   BCsTags[1] = &nbcs;
+   BCsTags[2] = &ebcs;
+
+   BCVals[0]  = &dbcv;
+   BCVals[1]  = &nbcv;
+   BCVals[2]  = &ebcv;
+   int NewBCs = dbcs.Size() + nbcs.Size() + ebcs.Size();
+   if(NewBCs != 0) demoProb.UpdateArrayBCs(BCsdTags, BCdVals, BCsTags, BCVals);
+   demoProb.BuildOperator();
 
    //Set the solver and preconditioner
    demoProb.BuildPreconditioner();

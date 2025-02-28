@@ -96,6 +96,13 @@ class JBvEMProblem
     JBvEMProblem(ParFiniteElementSpace *f1, ParFiniteElementSpace *f2, ParFiniteElementSpace *f3
 	       , double *sig, double *MU, MemoryType deviceMT, int dim);
 
+    //Read in and set the Boundary conditions
+    void UpdateArrayBCs(const Array<int>& BCsdTags, const Vector & BCdVals
+	                  , const Array<Array<int>*>& BCsTags, const Array<Vector*>& BCVals);
+
+    //Build the problem operator
+    void BuildOperator();
+
     //Build and set a Preconditioner for the solver
     void BuildPreconditioner();
 
@@ -203,7 +210,6 @@ JBvEMProblem::JBvEMProblem(ParFiniteElementSpace *f1RT
 
   //Setting the boundary conditions
   SetBCsArrays();
-  Array<int> ess_tdof_empty;
 
   //Set the integrators/integral forms and assemble the block matrices/bilinear forms
   //Square Bilinear forms (for preconditioning)
@@ -230,6 +236,13 @@ JBvEMProblem::JBvEMProblem(ParFiniteElementSpace *f1RT
   VJForm->Assemble();
   VBForm->AddDomainIntegrator(new MixedWeakDivCrossIntegrator(U_func));
   VBForm->Assemble();
+
+
+};
+
+//Build the problem operator
+void JBvEMProblem::BuildOperator(){
+  Array<int> ess_tdof_empty;
 
   //Set the BCs and finalize the bilinear forms (PA)
   JJ_Form->FormSystemMatrix(ess_tdof_empty, OpJJ1);
@@ -265,14 +278,14 @@ JBvEMProblem::JBvEMProblem(ParFiniteElementSpace *f1RT
 //  JBvEMOp->SetBlock(2,1, OpVB.Ptr(), -1.0);
 };
 
-//Sets the natural and essential boundary
+//Sets the default essential boundary
 //conditions
 void JBvEMProblem::SetBCsArrays(){
   //Essential boundary condition tags
   int nJTags = fespaceRT->GetMesh()->bdr_attributes.Max();
   int nBTags = fespaceND->GetMesh()->bdr_attributes.Max();
   int nVTags = fespaceH1->GetMesh()->bdr_attributes.Max();
-  int nMaxTags = max(nVTags,max(nBTags,nJTags));
+  int nTagsMax = max(nVTags,max(nBTags,nJTags));
  
   ess_bdr_J = Array<int>(nJTags);
   ess_bdr_B = Array<int>(nBTags);
@@ -283,15 +296,17 @@ void JBvEMProblem::SetBCsArrays(){
   ess_bdr_B = 0;
   ess_bdr_v = 0;
 
-  //fixed J
-  ess_bdr_J[0] = 0;
-  ess_bdr_J[1] = 0;
-  ess_bdr_J[2] = 0;
+  if(nTagsMax > 3){
+    //fixed J
+    ess_bdr_J[0] = 0;
+    ess_bdr_J[1] = 0;
+    ess_bdr_J[2] = 0;
 
-  //fixed v
-  ess_bdr_v[0] = 1;
-  ess_bdr_v[1] = 1;
-  ess_bdr_v[2] = 1;
+    //fixed v
+    ess_bdr_v[0] = 1;
+    ess_bdr_v[1] = 1;
+    ess_bdr_v[2] = 1;
+  }
 
   //Find the True Dofs
   fespaceRT->GetEssentialTrueDofs(ess_bdr_J, ess_tdof_J);
@@ -302,99 +317,132 @@ void JBvEMProblem::SetBCsArrays(){
   vector<double> DirchVal_tmp;
   DirchVal.clear();
   DirchVal_tmp.clear();
-  for(int I=0; I<nMaxTags; I++) DirchVal_tmp.push_back(0.00); 
+  for(int I=0; I<nTagsMax; I++) DirchVal_tmp.push_back(0.00); 
 
   //J-Field BC-values
-  for(int I=0; I<nMaxTags; I++) DirchVal_tmp[I] = 0.00; 
+  for(int I=0; I<nTagsMax; I++) DirchVal_tmp[I] = 0.00; 
   DirchVal.push_back(DirchVal_tmp);
 
   //B-Field BC-values
-  for(int I=0; I<nMaxTags; I++) DirchVal_tmp[I] = 0.00; 
+  for(int I=0; I<nTagsMax; I++) DirchVal_tmp[I] = 0.00; 
   DirchVal.push_back(DirchVal_tmp);
 
   //v-Field BC-values
-  for(int I=0; I<nMaxTags; I++) DirchVal_tmp[I] = 0.00; 
-  DirchVal_tmp[1] = 3.00; // Fixed v = c
-  DirchVal_tmp[2] = 3.00; // Fixed v = c
+  for(int I=0; I<nTagsMax; I++) DirchVal_tmp[I] = 0.00; 
+  if(nTagsMax > 3){
+    DirchVal_tmp[1] = 3.00; // Fixed v = c
+    DirchVal_tmp[2] = 3.00; // Fixed v = c
+  }
   DirchVal.push_back(DirchVal_tmp);
   DirchVal_tmp.clear();
+};
+
+//Read in and set the Boundary conditions
+void JBvEMProblem::UpdateArrayBCs(const Array<int>& BCsdTags, const Vector & BCdVals
+	                            , const Array<Array<int>*>& BCsTags, const Array<Vector*>& BCVals)
+{
+  int nJTags = fespaceRT->GetMesh()->bdr_attributes.Max();
+  int nBTags = fespaceND->GetMesh()->bdr_attributes.Max();
+  int nVTags = fespaceH1->GetMesh()->bdr_attributes.Max();
+  int nTagsMax = max(nVTags,max(nBTags,nJTags));
+
+  //Initialise the arrays with the default tags
+  ess_bdr_J = BCsdTags[0];
+  ess_bdr_B = BCsdTags[1];
+  ess_bdr_v = BCsdTags[2];
+
+  //Set the Tag value that opposes the default
+  int OppTagValJ = ((BCsdTags[0] == 1) ? 0 : 1);
+  int OppTagValB = ((BCsdTags[1] == 1) ? 0 : 1);
+  int OppTagValV = ((BCsdTags[2] == 1) ? 0 : 1);
+
+  //Set the tags
+  if( BCsTags.Size() == 3){//Only do this if the size is correct
+    for(int I=0; I<2; I++){
+      if((BCsTags[I]->Size() > 0)and(BCsTags[I] != NULL)){//Makes sure array is not empty/NULL
+        for(int J=0; J<BCsTags[I]->Size(); J++){
+          int K = (*BCsTags[I])[J];
+          if((K > nTagsMax)and(K < 0)) continue;
+          if(I==0)ess_bdr_J[K] = OppTagValJ;
+          if(I==1)ess_bdr_B[K] = OppTagValB;
+          if(I==2)ess_bdr_v[K] = OppTagValV;
+        }
+      }
+    }
+  }
+
+  //Find the True Dofs
+  fespaceRT->GetEssentialTrueDofs(ess_bdr_J, ess_tdof_J);
+  fespaceND->GetEssentialTrueDofs(ess_bdr_B, ess_tdof_B);
+  fespaceH1->GetEssentialTrueDofs(ess_bdr_v, ess_tdof_v);
+
+  //J-Field, B-Field and v-Field BC-values Defaults
+  for(int J=0; J<3; J++) 
+    for(int I=0; I<nTagsMax; I++) 
+      DirchVal[J][I] = BCdVals[J];
+
+
+  //J-Field and v-Field BC-values Unique
+  if(BCVals.Size() == BCsTags.Size()){//Check whether Meta Array values correspond
+    if( BCsTags.Size() == 3){//Only do this if the size is correct
+      for(int I=0; I<3; I++){//Loop over all fields
+        if((BCsTags[I]->Size() > 0)and(BCsTags[I] != NULL)){//Makes sure array is not empty/NULL
+          for(int J=0; J<BCsTags[I]->Size(); J++){
+            int K = (*BCsTags[I])[J];
+            if((K > nTagsMax)or(K < 0)) continue;
+            DirchVal[I][K] =  (*BCVals[I])[J];
+          }
+        }
+      }
+    }
+  }
+  //End of function
 };
 
 //Set the BCs by setting the solution vectors and
 void JBvEMProblem::SetFieldBCs(){
   //Set the boundary Solution function for
   //the current field
-  int nJ_tags = fespaceRT->GetMesh()->bdr_attributes.Max();
-  int nB_tags = fespaceND->GetMesh()->bdr_attributes.Max();
-  int nv_tags = fespaceH1->GetMesh()->bdr_attributes.Max();
+  int nJTags = fespaceRT->GetMesh()->bdr_attributes.Max();
+  int nBTags = fespaceND->GetMesh()->bdr_attributes.Max();
+  int nVTags = fespaceH1->GetMesh()->bdr_attributes.Max();
+  int nTagsMax = max(nVTags,max(nBTags,nJTags));
 
-  cout << setw(10) << "RT element Tags: " << setw(10) << nJ_tags << "\n";
-  cout << setw(10) << "H1 element Tags: " << setw(10) << nv_tags << "\n";
   x_vec.GetBlock(2) = 0.2;
   tx_vec.GetBlock(2) = 0.2;
 
   //Set the J-Field BCs by looping over the
   //active boundaries
-  cout << setw(10) << "RT elements: " << setw(10) << ess_tdof_J.Size() << "\n";
-  for(int I=0; I<nJ_tags; I++){
-    int K = ess_bdr_J[I];
-    if(K == 1){ //Checks if boundary is active
-      Array<int> ess_tdof, ess_bdr_tmp(nJ_tags);
-      ess_bdr_tmp = 0;
-      ess_bdr_tmp[I] = 1;
-      fespaceRT->GetEssentialTrueDofs(ess_bdr_tmp, ess_tdof);
-      cout << setw(10) << I << setw(10) << ess_tdof.Size() << "\n";
-      x_vec.GetBlock(0).SetSubVector( ess_tdof, DirchVal[0][I] );
-      b_vec.GetBlock(0).SetSubVector( ess_tdof, DirchVal[0][I] );
-      tx_vec.GetBlock(0).SetSubVector( ess_tdof, DirchVal[0][I] );
-      tb_vec.GetBlock(0).SetSubVector( ess_tdof, DirchVal[0][I] );
-    }
-  }
-
-  //Set the B-Field BCs by looping over the
-  //active boundaries
-  cout << setw(10) << "ND elements: " << setw(10) << ess_tdof_B.Size() << "\n";
-  for(int I=0; I<nB_tags; I++){
-    int K = ess_bdr_B[I];
-    if(K == 1){ //Checks if boundary is active
-      Array<int> ess_tdof, ess_bdr_tmp(nB_tags);
-      ess_bdr_tmp = 0;
-      ess_bdr_tmp[I] = 1;
-      fespaceND->GetEssentialTrueDofs(ess_bdr_tmp, ess_tdof);
-      cout << setw(10) << I << setw(10) << ess_tdof.Size() << "\n";
-      x_vec.GetBlock(1).SetSubVector( ess_tdof, DirchVal[1][I] );
-      b_vec.GetBlock(1).SetSubVector( ess_tdof, DirchVal[1][I] );
-      tx_vec.GetBlock(1).SetSubVector( ess_tdof, DirchVal[1][I] );
-      tb_vec.GetBlock(1).SetSubVector( ess_tdof, DirchVal[1][I] );
-    }
-  }
-
-
-  //Set the v-Field BCs by looping over the
-  //active boundaries
-  cout << setw(10) << "H1 elements: " << setw(10) << ess_tdof_v.Size() << "\n";
-  for(int I=0; I<nv_tags; I++){
-    int K = ess_bdr_v[I];
-    if(K == 1){ //Checks if boundary is active
-      Array<int> ess_tdof, ess_bdr_tmp(nv_tags);
-      ess_bdr_tmp = 0;
-      ess_bdr_tmp[I] = 1;
-      fespaceH1->GetEssentialTrueDofs(ess_bdr_tmp, ess_tdof);
-      cout << setw(10) << I << setw(10) << ess_tdof.Size() << "\n";
-      x_vec.GetBlock(2).SetSubVector( ess_tdof, DirchVal[2][I] );
-      b_vec.GetBlock(2).SetSubVector( ess_tdof, DirchVal[2][I] );
-      tx_vec.GetBlock(2).SetSubVector( ess_tdof, DirchVal[2][I] );
-      tb_vec.GetBlock(2).SetSubVector( ess_tdof, DirchVal[2][I] );
+  for(int P=0; P <3; P++){ //Over all field-blocks
+    for(int I=0; I<nTagsMax; I++){
+      int K=0;
+      if((P==0)and(I < nJTags)) K = ess_bdr_J[I];
+      if((P==1)and(I < nBTags)) K = ess_bdr_B[I];
+      if((P==2)and(I < nVTags)) K = ess_bdr_v[I];
+      if(K == 1){ //Checks if boundary is active
+        Array<int> ess_tdof, ess_bdr_tmp(nTagsMax);
+        ess_bdr_tmp = 0;
+        ess_bdr_tmp[I] = 1;
+        if(P==0) fespaceRT->GetEssentialTrueDofs(ess_bdr_tmp, ess_tdof);
+        if(P==1) fespaceND->GetEssentialTrueDofs(ess_bdr_tmp, ess_tdof);
+        if(P==2) fespaceH1->GetEssentialTrueDofs(ess_bdr_tmp, ess_tdof);
+	  
+        x_vec.GetBlock(P).SetSubVector( ess_tdof, DirchVal[P][I] );
+        b_vec.GetBlock(P).SetSubVector( ess_tdof, DirchVal[P][I] );
+        tx_vec.GetBlock(P).SetSubVector( ess_tdof, DirchVal[P][I] );
+        tb_vec.GetBlock(P).SetSubVector( ess_tdof, DirchVal[P][I] );
+      }
     }
   }
 };
 
 
 //Builds a preconditioner needed to
-//accelerate the Darcy problem solver (Optional)
-
+//accelerate the problem solver (Optional)
 void JBvEMProblem::BuildPreconditioner()
 {
+  if(JBvEMOp == NULL) throw("Error Problem Operator not built");
+
   //Construct the a Schurr Complement
   //Gauss-Seidel block Preconditioner
   matBB = static_cast<HypreParMatrix*>( OpBB1.Ptr() );
@@ -409,23 +457,6 @@ void JBvEMProblem::BuildPreconditioner()
   MinvBt->InvScaleRows(*Md);
   matS1  = ParMult(matJV, MinvBt);
 
-/*
-    OperatorPtr OpJJ1, OpBB1;
-    OperatorPtr OpJJ, OpBB, OpJB, OpJV, OpBJ, OpVJ;
-    TransposeOperator *JVt = NULL,*JBt = NULL, *BJt = NULL;
-
-    HypreParMatrix *matJJ=NULL, *matJV=NULL, *matJB=NULL;
-    HypreParMatrix *matBB=NULL, *matBJ=NULL;
-    HypreParMatrix *matVJ=NULL;
-
-    HypreParMatrix *MinvBt = NULL, *matS1 = NULL, *matS2 = NULL;
-    HypreParVector *Md = NULL, *Md1 = NULL;
-    Solver *invM=NULL;
-    Solver *invS1=NULL;
-    HypreBoomerAMG *invS2=NULL;
-
-    invS1 = new OperatorJacobiSmoother(Md_PA, ess_tdof_list);
-*/
   invM  = new HypreADS(*matJJ, fespaceRT);
   invS1 = new HypreAMS(*matBB, fespaceND);
   invS2 = new HypreBoomerAMG(*matS1);

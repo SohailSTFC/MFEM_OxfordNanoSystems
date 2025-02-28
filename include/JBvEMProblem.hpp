@@ -476,7 +476,7 @@ void JBvEMProblem::BuildPreconditioner()
 //Sets the linear/non-linear solver
 //for the Darcy problem
 void JBvEMProblem::Set_Solver(bool verbosity){
-  int maxIter(75);
+  int maxIter(2500);
   double rtol(1.e-10);
   double atol(1.e-10);
   solver = new MINRESSolver(MPI_COMM_WORLD);

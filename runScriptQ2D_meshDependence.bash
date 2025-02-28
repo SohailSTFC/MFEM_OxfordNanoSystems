@@ -44,15 +44,6 @@ mv EMsampleProbJV  Sim_Q2_USH1/EMsampleProbJV
 mv EMSampleProbJBv Sim_Q2_USH1/EMSampleProbJBv
 cd ..
 
-mpirun -np 32 EMsampleProbV   -m mesh/OxNanoSys1.msh -r 2 -p 2 &> JobData/Sim_V_USH2.log
-mpirun -np 32 EMsampleProbJV  -m mesh/OxNanoSys1.msh -r 2 -p 2 &> JobData/Sim_JV_USH2.log
-mpirun -np 32 EMsampleProbJVB -m mesh/OxNanoSys1.msh -r 2 -p 2 &> JobData/Sim_JVB_USH2.log
-cd ParaView
-mkdir Sim_Q2_USH2
-mv EMsampleProbV   Sim_Q2_USH2/EMsampleProbV
-mv EMsampleProbJV  Sim_Q2_USH2/EMsampleProbJV
-mv EMSampleProbJBv Sim_Q2_USH2/EMSampleProbJBv
-cd ..
 
 ##
 ## Shielded Cases
@@ -75,14 +66,4 @@ mkdir Sim_Q2_SH1
 mv EMsampleProbV  Sim_Q2_SH1/EMsampleProbV
 mv EMsampleProbJV Sim_Q2_SH1/EMsampleProbJV
 mv EMSampleProbJBv Sim_Q2_SH1/EMSampleProbJBv
-cd ..
-
-mpirun -np 32 EMsampleProbV   -m mesh/OxNanoSys1s.msh -r 2 -p 2 &> JobData/Sim_V_SH2.log
-mpirun -np 32 EMsampleProbJV  -m mesh/OxNanoSys1s.msh -r 2 -p 2 &> JobData/Sim_JV_SH2.log
-mpirun -np 32 EMsampleProbJVB -m mesh/OxNanoSys1s.msh -r 2 -p 2 &> JobData/Sim_JVB_SH2.log
-cd ParaView
-mkdir Sim_Q2_SH2
-mv EMsampleProbV   Sim_Q2_SH2/EMsampleProbV
-mv EMsampleProbJV  Sim_Q2_SH2/EMsampleProbJV
-mv EMSampleProbJBv Sim_Q2_SH2/EMSampleProbJBv
 cd ..

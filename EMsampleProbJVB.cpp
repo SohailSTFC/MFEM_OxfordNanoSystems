@@ -146,7 +146,7 @@ int main(int argc, char *argv[])
 
    // 7. Define a parallel finite element space on the parallel mesh. Here we
    //    use the Raviart-Thomas finite elements of the specified order.
-   FiniteElementCollection *hdiv_coll(new RT_FECollection(order, dim));
+   FiniteElementCollection *hdiv_coll(new RT_FECollection(order+1, dim));
    FiniteElementCollection *HCurl_coll(new ND_FECollection(order+1, dim));
    FiniteElementCollection *l2_coll(new H1_FECollection(order));
 
